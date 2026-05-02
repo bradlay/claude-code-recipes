@@ -7,6 +7,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the marketplace itself follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 loosely (per-plugin versions in their `plugin.json`).
 
+## subagent-context-injector
+
+### 0.1.0 — 2026-05-02
+
+Initial release.
+
+- SubagentStart hook on `Plan` and `Explore` matchers.
+- Injects project context as `additionalContext`: CLAUDE.md (first 8K),
+  `.claude/rules/*.md` first-line summaries, current branch +
+  working-tree status + last 5 commits, top-level directory listing.
+- 12K total budget.
+- Fail-open: any error returns a pass-through and the subagent starts
+  without the injection.
+- Resolves `git` via `shutil.which()` so the partial-path security
+  warning doesn't fire.
+- 11 unit tests against synthetic project trees.
+
 ## bash-guard
 
 ### 0.1.0 — 2026-05-02
