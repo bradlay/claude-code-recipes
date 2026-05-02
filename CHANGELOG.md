@@ -7,6 +7,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the marketplace itself follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 loosely (per-plugin versions in their `plugin.json`).
 
+## stop-session-check
+
+### 0.1.0 — 2026-05-02
+
+Initial release.
+
+- Stop hook that builds a session-end checklist: uncommitted changes,
+  branch ahead of remote, recent plan files, plus repo-type-specific
+  test and deploy hints (Python, Node, Cloudflare Worker).
+- Blocks the stop with a `decision: block` reason when there are
+  uncommitted changes or unpushed commits. The model sees the
+  checklist and can address each item.
+- Recursive-stop bypass: when the host re-invokes with
+  `stop_hook_active: true`, allows the stop unconditionally so the
+  user is never trapped.
+- Fail-open: any internal error allows the stop; the hook never wedges.
+- 22 unit tests covering repo-type detection, hint logic, recent-plan
+  detection, full git-state probes against tmp repos, checklist
+  composition, and end-to-end hook envelopes.
+
 ## branch-warn
 
 ### 0.1.0 — 2026-05-02

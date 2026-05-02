@@ -51,6 +51,8 @@ jobs:
         run: MYPYPATH=plugins/posttooluse-bash-audit/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/posttooluse-bash-audit/scripts
       - name: mypy branch-warn
         run: MYPYPATH=plugins/branch-warn/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/branch-warn/scripts
+      - name: mypy stop-session-check
+        run: MYPYPATH=plugins/stop-session-check/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/stop-session-check/scripts
 
   pytest:
     name: Tests (pytest)
@@ -74,6 +76,8 @@ jobs:
         run: pytest tests/posttooluse_bash_audit
       - name: pytest branch-warn
         run: pytest tests/branch_warn
+      - name: pytest stop-session-check
+        run: pytest tests/stop_session_check
 
   shellcheck:
     name: Shellcheck (bin/)
@@ -83,7 +87,7 @@ jobs:
       - name: Run shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y shellcheck
-          shellcheck -s sh plugins/plan-review-loop/bin/plan-review-hook plugins/plan-review-loop/bin/preflight plugins/bash-guard/bin/bash-guard plugins/subagent-context-injector/bin/subagent-context plugins/precompact-context-keeper/bin/precompact-keeper plugins/posttooluse-bash-audit/bin/audit plugins/branch-warn/bin/branch-warn
+          shellcheck -s sh plugins/plan-review-loop/bin/plan-review-hook plugins/plan-review-loop/bin/preflight plugins/bash-guard/bin/bash-guard plugins/subagent-context-injector/bin/subagent-context plugins/precompact-context-keeper/bin/precompact-keeper plugins/posttooluse-bash-audit/bin/audit plugins/branch-warn/bin/branch-warn plugins/stop-session-check/bin/stop-check
 
   json-validate:
     name: Validate plugin manifests
@@ -111,6 +115,8 @@ jobs:
               'plugins/posttooluse-bash-audit/hooks/hooks.json',
               'plugins/branch-warn/.claude-plugin/plugin.json',
               'plugins/branch-warn/hooks/hooks.json',
+              'plugins/stop-session-check/.claude-plugin/plugin.json',
+              'plugins/stop-session-check/hooks/hooks.json',
           ]
           for p in paths:
               try:

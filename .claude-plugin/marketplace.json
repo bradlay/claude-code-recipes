@@ -34,6 +34,11 @@
       "name": "branch-warn",
       "source": "./plugins/branch-warn",
       "description": "UserPromptSubmit hook that emits 'on branch X' once per hour as a systemMessage. Catches the 'wait, I should be on a feature branch' footgun without nagging."
+    },
+    {
+      "name": "stop-session-check",
+      "source": "./plugins/stop-session-check",
+      "description": "Stop hook that surfaces a session-end completion checklist (uncommitted changes, branch ahead of remote, repo-type-specific test/deploy hints). Blocks the stop when there are uncommitted changes or unpushed commits."
     }
   ]
 }
