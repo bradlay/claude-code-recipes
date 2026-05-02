@@ -36,7 +36,6 @@ from _lib.guard import (  # noqa: E402
     load_rules,
     log_block,
     split_chained_commands,
-    write_approval,  # noqa: F401  # exposed for future test seeding
 )
 
 
