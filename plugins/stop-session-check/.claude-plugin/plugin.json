@@ -1,0 +1,10 @@
+{
+  "name": "stop-session-check",
+  "version": "0.1.0",
+  "description": "Stop hook that surfaces a session-end completion checklist: uncommitted changes, branch ahead of remote, recent plan files. Detects repo type (Python, Node, Cloudflare Worker) and adds matching test-run hints. Blocks session-end when there are uncommitted changes or unpushed commits.",
+  "author": {
+    "name": "bradlay"
+  },
+  "homepage": "https://github.com/bradlay/claude-code-recipes",
+  "license": "MIT"
+}
