@@ -1,5 +1,5 @@
-# Minimal I/O for the SubagentStart hook: stdin parsing, raw archive,
-# per-event log, and the SubagentStart additionalContext envelope.
+# Minimal I/O for the branch-warn UserPromptSubmit hook: stdin parsing,
+# raw archive, per-event log, and a continue-with-message envelope.
 # Fail-open by default since this hook is informational.
 
 from __future__ import annotations
@@ -31,8 +31,6 @@ _KNOWN_TOP_LEVEL_KEYS = frozenset(
         "message",
         "stop_hook_active",
         "source",
-        "subagent_type",
-        "subagent_id",
         "permission_mode",
         "tool_use_id",
     },
@@ -43,6 +41,7 @@ _KNOWN_TOP_LEVEL_KEYS = frozenset(
 class HookInvocation:
     event: str
     cwd: Path
+    session_id: str
     raw: dict[str, Any]
     hook_script: str
 
@@ -55,7 +54,7 @@ def parse_stdin(hook_script: str) -> HookInvocation:
 
     # Failure to decode stdin JSON is silent: this hook is informational
     # and a malformed payload from a host-CLI version drift shouldn't
-    # block subagent startup. The empty raw dict propagates downstream.
+    # block the user prompt.
     raw: dict[str, Any] = {}
     if payload:
         with contextlib.suppress(json.JSONDecodeError):
@@ -65,8 +64,9 @@ def parse_stdin(hook_script: str) -> HookInvocation:
 
     cwd_raw = raw.get("cwd") or str(Path.cwd())
     inv = HookInvocation(
-        event=str(raw.get("hook_event_name") or "SubagentStart"),
+        event=str(raw.get("hook_event_name") or "UserPromptSubmit"),
         cwd=Path(cwd_raw),
+        session_id=str(raw.get("session_id", "unknown")),
         raw=raw,
         hook_script=hook_script,
     )
@@ -83,7 +83,7 @@ def log(inv: HookInvocation, msg: str, *, level: str = "info") -> None:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     line = f"[{ts}] [{level}] {msg}"
     with contextlib.suppress(OSError):
-        print(f"[subagent-context:{inv.event}] {msg}", file=sys.stderr)
+        print(f"[branch-warn:{inv.event}] {msg}", file=sys.stderr)
     with contextlib.suppress(OSError):
         path = _event_log_path(inv.event)
         existed = path.exists()
@@ -128,20 +128,14 @@ def _write_stdout(payload: dict[str, Any]) -> None:
         sys.stdout.flush()
 
 
-def emit_subagent_start_context(context: str) -> int:
-    """SubagentStart hooks emit additionalContext for the new subagent."""
-    _write_stdout(
-        {
-            "hookSpecificOutput": {
-                "hookEventName": "SubagentStart",
-                "additionalContext": context,
-            },
-        },
-    )
-    return 0
+def emit_systemmessage_or_passthrough(message: str | None = None) -> int:
+    """Continue the prompt; if `message` is set, emit it as a
+    systemMessage. Empty pass-through otherwise.
 
-
-def emit_continue() -> int:
-    """Pass-through emit when there's nothing to inject."""
-    _write_stdout({})
+    Distinct name from other plugins' emit_continue helpers so CodeQL
+    can disambiguate the correct callable across the repo."""
+    payload: dict[str, Any] = {}
+    if message:
+        payload["systemMessage"] = message
+    _write_stdout(payload)
     return 0

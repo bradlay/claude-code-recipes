@@ -29,6 +29,11 @@
       "name": "posttooluse-bash-audit",
       "source": "./plugins/posttooluse-bash-audit",
       "description": "PostToolUse(Bash) hook that appends every executed Bash command (timestamp + session id + 200-char summary) to a local audit log. Stays local, fail-open."
+    },
+    {
+      "name": "branch-warn",
+      "source": "./plugins/branch-warn",
+      "description": "UserPromptSubmit hook that emits 'on branch X' once per hour as a systemMessage. Catches the 'wait, I should be on a feature branch' footgun without nagging."
     }
   ]
 }
