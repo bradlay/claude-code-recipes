@@ -144,38 +144,41 @@ jobs:
           if [ -n "$out" ]; then
             echo "$out" | python3 -c 'import json, sys; json.loads(sys.stdin.read())'
           fi
-      - name: Fail-closed deny when codex missing (default)
+      - name: Make a long-enough plan file for smoke tests
+        run: |
+          mkdir -p /tmp/smoke-plans
+          cat > /tmp/smoke-plans/plan.md <<'EOF'
+          # Smoke test plan
+
+          ## Context
+
+          This is a synthetic plan used by CI to drive the plan-review-loop
+          hook end to end. It must be at least 100 characters of content
+          past the title so the runner does not bail with `plan_too_short`.
+
+          ## Implementation
+
+          1. Cause the hook to fire.
+          2. Observe the hook decision.
+          3. Assert it matches expectations under the test scenario.
+          EOF
+      - name: Fail-closed deny when no providers on PATH (default)
         run: |
           export CLAUDE_PLUGIN_DATA=$(mktemp -d)
           export CLAUDE_PLUGIN_ROOT="$PWD/plugins/plan-review-loop"
-          # Strip codex/gemini/claude from PATH so all providers fail
           stripped_path=$(echo "$PATH" | tr ':' '\n' | grep -v claude | grep -v codex | grep -v gemini | tr '\n' ':')
-          mkdir -p /tmp/empty-plans && echo "# Tiny" > /tmp/empty-plans/x.md
-          echo '{"tool_input":{"planFilePath":"/tmp/empty-plans/x.md"}}' | \
+          echo '{"tool_input":{"planFilePath":"/tmp/smoke-plans/plan.md"}}' | \
             env -i PATH="$stripped_path" CLAUDE_PLUGIN_DATA="$CLAUDE_PLUGIN_DATA" CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" \
               "$CLAUDE_PLUGIN_ROOT/bin/plan-review-hook" > /tmp/hook-out.json 2>/tmp/hook-err.log
           echo "=== stdout ==="; cat /tmp/hook-out.json
           echo "=== stderr ==="; cat /tmp/hook-err.log
-          python3 -c "
-          import json
-          d = json.load(open('/tmp/hook-out.json'))
-          decision = d.get('hookSpecificOutput', {}).get('permissionDecision')
-          assert decision == 'deny', f'expected deny, got {decision}'
-          print('OK: hook denied as expected')
-          "
-      - name: FAIL_OPEN bypass allows the exit
+          python3 -c "import json,sys; d=json.load(open('/tmp/hook-out.json')); decision=d.get('hookSpecificOutput',{}).get('permissionDecision'); sys.exit(0 if decision=='deny' else (print(f'expected deny, got {decision}') or 1))"
+      - name: FAIL_OPEN=1 bypass allows the exit
         run: |
           export CLAUDE_PLUGIN_DATA=$(mktemp -d)
           export CLAUDE_PLUGIN_ROOT="$PWD/plugins/plan-review-loop"
           stripped_path=$(echo "$PATH" | tr ':' '\n' | grep -v claude | grep -v codex | grep -v gemini | tr '\n' ':')
-          mkdir -p /tmp/empty-plans && echo "# Tiny plan content for smoke test that is at least one hundred characters long oh boy oh boy oh boy" > /tmp/empty-plans/x.md
-          echo '{"tool_input":{"planFilePath":"/tmp/empty-plans/x.md"}}' | \
+          echo '{"tool_input":{"planFilePath":"/tmp/smoke-plans/plan.md"}}' | \
             env -i PATH="$stripped_path" CLAUDE_PLAN_REVIEW_FAIL_OPEN=1 CLAUDE_PLUGIN_DATA="$CLAUDE_PLUGIN_DATA" CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" \
               "$CLAUDE_PLUGIN_ROOT/bin/plan-review-hook" > /tmp/hook-out.json
-          python3 -c "
-          import json
-          d = json.load(open('/tmp/hook-out.json'))
-          decision = d.get('hookSpecificOutput', {}).get('permissionDecision')
-          assert decision == 'allow', f'expected allow, got {decision}'
-          print('OK: FAIL_OPEN bypass allowed exit')
-          "
+          python3 -c "import json,sys; d=json.load(open('/tmp/hook-out.json')); decision=d.get('hookSpecificOutput',{}).get('permissionDecision'); sys.exit(0 if decision=='allow' else (print(f'expected allow, got {decision}') or 1))"

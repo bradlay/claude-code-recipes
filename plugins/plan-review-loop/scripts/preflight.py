@@ -18,6 +18,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
@@ -39,7 +40,7 @@ def _check_writable(directory: Path) -> bool:
         return False
 
 
-def _build_report() -> dict:
+def _build_report() -> dict[str, Any]:
     chain = _chain_from_env() or default_chain()
 
     findings: list[str] = []
@@ -86,7 +87,7 @@ def _build_report() -> dict:
     }
 
 
-def _report_signature(report: dict) -> str:
+def _report_signature(report: dict[str, Any]) -> str:
     """Hash the materially-relevant fields so unchanged reports don't re-emit."""
     sig_input = json.dumps(
         {
@@ -100,7 +101,7 @@ def _report_signature(report: dict) -> str:
     return hashlib.sha256(sig_input.encode()).hexdigest()
 
 
-def _format_context(report: dict) -> str:
+def _format_context(report: dict[str, Any]) -> str:
     lines = ["plan-review-loop preflight:"]
     lines.append(f"  chain: {' -> '.join(report['chain'])}")
     if report["ok"]:
@@ -122,7 +123,7 @@ def _format_context(report: dict) -> str:
     return "\n".join(lines)
 
 
-def _write_health(report: dict) -> None:
+def _write_health(report: dict[str, Any]) -> None:
     with contextlib.suppress(OSError):
         record = {
             "timestamp": report["timestamp"],
