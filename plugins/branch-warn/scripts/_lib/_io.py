@@ -128,9 +128,12 @@ def _write_stdout(payload: dict[str, Any]) -> None:
         sys.stdout.flush()
 
 
-def emit_continue(message: str | None = None) -> int:
+def emit_systemmessage_or_passthrough(message: str | None = None) -> int:
     """Continue the prompt; if `message` is set, emit it as a
-    systemMessage. Empty pass-through otherwise."""
+    systemMessage. Empty pass-through otherwise.
+
+    Distinct name from other plugins' emit_continue helpers so CodeQL
+    can disambiguate the correct callable across the repo."""
     payload: dict[str, Any] = {}
     if message:
         payload["systemMessage"] = message

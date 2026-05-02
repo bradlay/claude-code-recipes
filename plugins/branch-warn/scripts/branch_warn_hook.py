@@ -89,16 +89,16 @@ def main() -> int:
         throttle = _throttle_seconds()
 
         if _was_warned_recently(marker, throttle):
-            return _io.emit_continue()
+            return _io.emit_systemmessage_or_passthrough()
 
         branch = _current_branch(cwd)
         if not branch:
-            return _io.emit_continue()
+            return _io.emit_systemmessage_or_passthrough()
 
         protected = _protected_branches()
         if branch in protected:
             _touch(marker)
-            return _io.emit_continue(
+            return _io.emit_systemmessage_or_passthrough(
                 message=(
                     f"WARNING: on '{branch}' branch. "
                     "Consider a feature branch for work that might land in a PR."
@@ -107,10 +107,10 @@ def main() -> int:
 
         # Non-protected branch: emit a quieter "on branch X" hint hourly.
         _touch(marker)
-        return _io.emit_continue(message=f"On branch: {branch}")
+        return _io.emit_systemmessage_or_passthrough(message=f"On branch: {branch}")
     except Exception as exc:
         _io.log(inv, f"branch-warn error (failing open): {exc}", level="error")
-        return _io.emit_continue()
+        return _io.emit_systemmessage_or_passthrough()
 
 
 if __name__ == "__main__":
