@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import subprocess
 import sys
@@ -76,7 +77,10 @@ def _git_context(cwd: Path) -> str:
     if git_bin is None:
         return "(git not on PATH)"
 
-    try:
+    # Each git probe is best-effort. Subprocess failure (timeout, missing
+    # binary mid-call, OS error) is treated as "skip this section" since
+    # this hook is informational, not a security gate.
+    with contextlib.suppress(subprocess.TimeoutExpired, FileNotFoundError, OSError):
         branch = subprocess.run(
             [git_bin, "branch", "--show-current"],
             cwd=cwd,
@@ -87,10 +91,8 @@ def _git_context(cwd: Path) -> str:
         )
         if branch.returncode == 0 and branch.stdout.strip():
             parts.append(f"Branch: {branch.stdout.strip()}")
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        pass
 
-    try:
+    with contextlib.suppress(subprocess.TimeoutExpired, FileNotFoundError, OSError):
         status = subprocess.run(
             [git_bin, "status", "--short"],
             cwd=cwd,
@@ -105,10 +107,8 @@ def _git_context(cwd: Path) -> str:
                 parts.append("Working tree:\n" + short)
             else:
                 parts.append("Working tree: clean")
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        pass
 
-    try:
+    with contextlib.suppress(subprocess.TimeoutExpired, FileNotFoundError, OSError):
         log = subprocess.run(
             [git_bin, "log", "--oneline", "-5"],
             cwd=cwd,
@@ -119,8 +119,6 @@ def _git_context(cwd: Path) -> str:
         )
         if log.returncode == 0 and log.stdout.strip():
             parts.append("Last commits:\n" + log.stdout.strip())
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        pass
 
     return "\n".join(parts) if parts else "(not a git repo)"
 
