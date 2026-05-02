@@ -77,9 +77,7 @@ class TestFailOpenOrClosed:
         assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_fail_open_env_bypasses(self, capsys: pytest.CaptureFixture[str]) -> None:
-        with mock.patch.dict(
-            os.environ, {"CLAUDE_PLAN_REVIEW_FAIL_OPEN": "1"}, clear=True
-        ):
+        with mock.patch.dict(os.environ, {"CLAUDE_PLAN_REVIEW_FAIL_OPEN": "1"}, clear=True):
             _io.fail_open_or_closed_pretooluse(self._inv(), "no provider")
         out = _decode(capsys)
         assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
@@ -87,9 +85,7 @@ class TestFailOpenOrClosed:
 
     def test_truthy_values_for_bypass(self, capsys: pytest.CaptureFixture[str]) -> None:
         for val in ("1", "true", "yes", "on", "TRUE", "Yes"):
-            with mock.patch.dict(
-                os.environ, {"CLAUDE_PLAN_REVIEW_FAIL_OPEN": val}, clear=True
-            ):
+            with mock.patch.dict(os.environ, {"CLAUDE_PLAN_REVIEW_FAIL_OPEN": val}, clear=True):
                 _io.fail_open_or_closed_pretooluse(self._inv(), "x")
             out = _decode(capsys)
             assert out["hookSpecificOutput"]["permissionDecision"] == "allow", val

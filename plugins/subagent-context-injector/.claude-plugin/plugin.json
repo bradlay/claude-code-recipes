@@ -1,0 +1,10 @@
+{
+  "name": "subagent-context-injector",
+  "version": "0.1.0",
+  "description": "SubagentStart hook that injects project context (CLAUDE.md, .claude/rules/*.md, recent git activity, top-level structure) into Plan and Explore subagents so they boot with the same project awareness as the parent session.",
+  "author": {
+    "name": "bradlay"
+  },
+  "homepage": "https://github.com/bradlay/claude-code-recipes",
+  "license": "MIT"
+}
