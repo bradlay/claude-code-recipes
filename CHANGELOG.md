@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the marketplace itself follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 loosely (per-plugin versions in their `plugin.json`).
 
+## posttooluse-bash-audit
+
+### 0.1.0 — 2026-05-02
+
+Initial release.
+
+- PostToolUse(Bash) hook that appends every Bash command (timestamp +
+  session id + 200-char summary, newlines collapsed) to
+  `${CLAUDE_PLUGIN_DATA}/audit.log`.
+- Always fail-open; never blocks the tool result.
+- File permissions 0600 in 0700 dirs.
+- 7 unit tests covering append behaviour, truncation, newline collapse,
+  non-Bash skip, empty-command skip, and file mode.
+
 ## precompact-context-keeper
 
 ### 0.1.0 — 2026-05-02

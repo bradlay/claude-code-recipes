@@ -1,0 +1,10 @@
+{
+  "name": "posttooluse-bash-audit",
+  "version": "0.1.0",
+  "description": "PostToolUse(Bash) hook that appends every executed Bash command (with timestamp and session id) to a local audit log. Always fail-open; the log is a convenience, not a correctness surface. Stays local, never shipped anywhere.",
+  "author": {
+    "name": "bradlay"
+  },
+  "homepage": "https://github.com/bradlay/claude-code-recipes",
+  "license": "MIT"
+}
