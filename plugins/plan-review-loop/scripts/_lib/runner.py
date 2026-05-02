@@ -99,11 +99,14 @@ def _atomic_write(path: Path, data: str) -> None:
 def _load_state(plan_path: Path, content_hash: str) -> dict[str, Any]:
     sp = _state_path(plan_path, content_hash)
     if sp.exists():
-        try:
+        # Corrupt state JSON or unreadable file is treated as "no state":
+        # the loop falls through to the default fresh-iteration shape
+        # below. The runner's flock has already been acquired so this
+        # is the only reader; a partial/corrupt write is rare but
+        # recoverable by overwriting on the next save.
+        with contextlib.suppress(json.JSONDecodeError, OSError):
             loaded: dict[str, Any] = json.loads(sp.read_text())
             return loaded
-        except (json.JSONDecodeError, OSError):
-            pass
     return {
         "iteration": 0,
         "previous_findings": [],

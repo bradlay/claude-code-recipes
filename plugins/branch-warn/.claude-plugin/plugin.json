@@ -1,0 +1,10 @@
+{
+  "name": "branch-warn",
+  "version": "0.1.0",
+  "description": "UserPromptSubmit hook that emits 'on branch X' once per hour as a systemMessage. Catches the 'wait, I should be on a feature branch' footgun without nagging.",
+  "author": {
+    "name": "bradlay"
+  },
+  "homepage": "https://github.com/bradlay/claude-code-recipes",
+  "license": "MIT"
+}

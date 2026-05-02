@@ -19,6 +19,7 @@ Plugins I use day-to-day. Public so others can pull what's useful.
 | [`subagent-context-injector`](./plugins/subagent-context-injector/) | Injects CLAUDE.md, `.claude/rules/*.md`, git state, and top-level structure into Plan/Explore subagents so they don't boot cold. |
 | [`precompact-context-keeper`](./plugins/precompact-context-keeper/) | Threads CLAUDE.md + git state across the compaction boundary as a `systemMessage` so the post-compaction model still has the project framing. |
 | [`posttooluse-bash-audit`](./plugins/posttooluse-bash-audit/) | Appends every executed Bash command (timestamp + session id + summary) to a local audit log. Always fail-open. |
+| [`branch-warn`](./plugins/branch-warn/) | Emits "on branch X" once per hour on UserPromptSubmit. Quiet on feature branches, louder on `main`/`master`. |
 
 ## License
 
