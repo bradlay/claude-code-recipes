@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.pyo
+.envrc
+.envrc.local
+.DS_Store

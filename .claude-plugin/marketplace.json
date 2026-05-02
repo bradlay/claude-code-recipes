@@ -1,0 +1,14 @@
+{
+  "name": "claude-code-recipes",
+  "owner": {
+    "name": "bradlay",
+    "url": "https://github.com/bradlay"
+  },
+  "plugins": [
+    {
+      "name": "plan-review-loop",
+      "source": "./plugins/plan-review-loop",
+      "description": "Closed-loop Codex review on ExitPlanMode. Denies plan exit on P0/P1 findings; loop closes when the plan is clean."
+    }
+  ]
+}
