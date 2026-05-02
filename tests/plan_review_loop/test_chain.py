@@ -100,7 +100,7 @@ class TestProviderRegistry:
 
     def test_codex_uses_xhigh_reasoning(self) -> None:
         codex_cmd = chain.PROVIDER_CMDS["codex"]
-        assert any('xhigh' in arg for arg in codex_cmd)
+        assert any("xhigh" in arg for arg in codex_cmd)
 
 
 class TestMetadataOnlyLogs:

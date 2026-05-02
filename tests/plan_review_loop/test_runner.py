@@ -109,9 +109,7 @@ class TestPathLock:
         # Sentinel removed on release
         assert not runner._sentinel_path(plan_file).exists()
 
-    def test_second_acquire_same_process_busy(
-        self, plan_file: Path, tmp_data: Path
-    ) -> None:
+    def test_second_acquire_same_process_busy(self, plan_file: Path, tmp_data: Path) -> None:
         first = runner._PathLock(plan_file)
         assert first.acquire() is None
         try:
@@ -122,9 +120,7 @@ class TestPathLock:
         finally:
             first.release()
 
-    def test_release_after_failed_acquire_is_safe(
-        self, plan_file: Path, tmp_data: Path
-    ) -> None:
+    def test_release_after_failed_acquire_is_safe(self, plan_file: Path, tmp_data: Path) -> None:
         first = runner._PathLock(plan_file)
         assert first.acquire() is None
         try:
@@ -140,9 +136,7 @@ class TestPathLock:
         # Write a sentinel claiming a dead pid; do NOT hold flock.
         sentinel = runner._sentinel_path(plan_file)
         sentinel.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        sentinel.write_text(
-            json.dumps({"pid": 999999, "start_time": time.time() - 60})
-        )
+        sentinel.write_text(json.dumps({"pid": 999999, "start_time": time.time() - 60}))
         # No flock held so LOCK_NB succeeds; the stale sentinel cleanup
         # runs via _is_pid_alive returning False, but we never enter the
         # BlockingIOError branch because the lock is free. Sentinel just
@@ -201,9 +195,7 @@ class TestStateLifecycle:
 
 
 class TestReviewPlanShortCircuits:
-    def test_too_short_returns_status_without_locking(
-        self, tmp_path: Path, tmp_data: Path
-    ) -> None:
+    def test_too_short_returns_status_without_locking(self, tmp_path: Path, tmp_data: Path) -> None:
         plan = tmp_path / "tiny.md"
         plan.write_text("# small")  # well under 100 chars
         outcome = runner.review_plan(plan)

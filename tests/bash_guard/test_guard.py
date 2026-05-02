@@ -50,9 +50,7 @@ class TestChainSplit:
 
 class TestNormalize:
     def test_strips_git_C(self) -> None:
-        assert (
-            guard.normalize_for_patterns("git -C /some/path push") == "git push"
-        )
+        assert guard.normalize_for_patterns("git -C /some/path push") == "git push"
 
     def test_passthrough_non_git(self) -> None:
         assert guard.normalize_for_patterns("ls -la") == "ls -la"
@@ -139,18 +137,14 @@ class TestApprovalCache:
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
         assert guard.consume_approval("ls", expiry_seconds=60) is False
 
-    def test_write_then_consume(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_write_then_consume(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
         guard.write_approval("rm -rf /tmp/x")
         assert guard.consume_approval("rm -rf /tmp/x", 60) is True
         # one-shot
         assert guard.consume_approval("rm -rf /tmp/x", 60) is False
 
-    def test_expired_approval(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_expired_approval(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
         guard.write_approval("git push --force")
         approval = guard.paths.approvals_dir() / guard._command_hash("git push --force")
@@ -159,9 +153,7 @@ class TestApprovalCache:
 
 
 class TestRulesLoading:
-    def test_default_rules_load(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_default_rules_load(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
         guard._CACHE["config"] = None
         config = guard.load_rules()
@@ -170,9 +162,7 @@ class TestRulesLoading:
         ids = [r.get("id", "") for r in config["rules"]]
         assert "rm-rf-root" in ids
 
-    def test_user_override_wins(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_user_override_wins(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
         custom = tmp_path / "custom-rules.yaml"
         custom.write_text(

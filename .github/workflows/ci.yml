@@ -43,6 +43,8 @@ jobs:
         run: mypy --strict --explicit-package-bases --ignore-missing-imports plugins/plan-review-loop/scripts
       - name: mypy bash-guard
         run: MYPYPATH=plugins/bash-guard/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/bash-guard/scripts
+      - name: mypy subagent-context-injector
+        run: MYPYPATH=plugins/subagent-context-injector/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/subagent-context-injector/scripts
 
   pytest:
     name: Tests (pytest)
@@ -58,6 +60,8 @@ jobs:
         run: pytest tests/plan_review_loop
       - name: pytest bash-guard
         run: pytest tests/bash_guard
+      - name: pytest subagent-context-injector
+        run: pytest tests/subagent_context_injector
 
   shellcheck:
     name: Shellcheck (bin/)
@@ -67,7 +71,7 @@ jobs:
       - name: Run shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y shellcheck
-          shellcheck -s sh plugins/plan-review-loop/bin/plan-review-hook plugins/plan-review-loop/bin/preflight plugins/bash-guard/bin/bash-guard
+          shellcheck -s sh plugins/plan-review-loop/bin/plan-review-hook plugins/plan-review-loop/bin/preflight plugins/bash-guard/bin/bash-guard plugins/subagent-context-injector/bin/subagent-context
 
   json-validate:
     name: Validate plugin manifests
@@ -87,6 +91,8 @@ jobs:
               'plugins/plan-review-loop/hooks/hooks.json',
               'plugins/bash-guard/.claude-plugin/plugin.json',
               'plugins/bash-guard/hooks/hooks.json',
+              'plugins/subagent-context-injector/.claude-plugin/plugin.json',
+              'plugins/subagent-context-injector/hooks/hooks.json',
           ]
           for p in paths:
               try:
