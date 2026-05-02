@@ -19,6 +19,11 @@
       "name": "subagent-context-injector",
       "source": "./plugins/subagent-context-injector",
       "description": "SubagentStart hook that injects project context (CLAUDE.md, .claude/rules/*.md, git state, top-level structure) into Plan and Explore subagents so they boot with full project awareness instead of cold."
+    },
+    {
+      "name": "precompact-context-keeper",
+      "source": "./plugins/precompact-context-keeper",
+      "description": "PreCompact hook that injects CLAUDE.md + a tiny git-state summary as a systemMessage just before compaction so the post-compaction model still has the project framing."
     }
   ]
 }

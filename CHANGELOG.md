@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the marketplace itself follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 loosely (per-plugin versions in their `plugin.json`).
 
+## precompact-context-keeper
+
+### 0.1.0 — 2026-05-02
+
+Initial release.
+
+- PreCompact hook that emits a `systemMessage` containing CLAUDE.md
+  (first 1500 chars) plus current branch + uncommitted-changes
+  summary, just before the host CLI compacts the conversation.
+- Fail-open: any error returns a pass-through and compaction proceeds.
+- 6 unit tests against synthetic project trees.
+
 ## subagent-context-injector
 
 ### 0.1.0 — 2026-05-02
