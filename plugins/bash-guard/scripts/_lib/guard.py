@@ -24,10 +24,6 @@ from . import paths
 
 _SECURE_FILE_MODE = 0o600
 
-_DEFAULT_RULES_FILE = (
-    Path(__file__).resolve().parent.parent.parent / "scripts" / "default-rules.yaml"
-)
-
 
 # ----------------------------------------------------------------------
 # Config loading
