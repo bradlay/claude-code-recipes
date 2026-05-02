@@ -51,9 +51,7 @@ class HookInvocation:
     hook_script: str
 
 
-_SCRIPT_PREFIX_TO_EVENT: tuple[tuple[str, str], ...] = (
-    ("bash_guard_hook", "PreToolUse"),
-)
+_SCRIPT_PREFIX_TO_EVENT: tuple[tuple[str, str], ...] = (("bash_guard_hook", "PreToolUse"),)
 
 
 def _infer_event_from_script(hook_script: str) -> str:

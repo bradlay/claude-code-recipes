@@ -123,9 +123,7 @@ def main() -> int:
             )
             return _io.emit_pretooluse_deny(
                 full,
-                additional_context=(
-                    f"Sub-command that triggered: {offending_sub[:200]}"
-                ),
+                additional_context=(f"Sub-command that triggered: {offending_sub[:200]}"),
             )
 
         # decision == "deny"
