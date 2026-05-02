@@ -130,6 +130,54 @@ class TestEvaluateRules:
         assert reason == "echoed"
 
 
+class TestRmRfRule:
+    """Regression tests for rm-rf-root. The original regex matched any
+    path starting with '/', so 'rm -rf /var/log' was incorrectly blocked.
+    Fixed pattern requires the dangerous path to be the ENTIRE argument."""
+
+    @pytest.fixture
+    def config(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict:
+        monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
+        guard._CACHE["config"] = None
+        return guard.load_rules()
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "rm -rf /",
+            "rm -rf /*",
+            "rm -rf $HOME",
+            "rm -rf ~",
+            "rm -rf .",
+            "rm -rf ..",
+            "rm -fr /",
+            "rm --recursive --force /",
+            "rm -rfv /",  # extra flags
+        ],
+    )
+    def test_blocks_dangerous(self, config: dict, cmd: str) -> None:
+        decision, _ = guard.evaluate_rules(cmd, config)
+        assert decision == "deny", f"expected deny for: {cmd}"
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "rm -rf /var/log",
+            "rm -rf /tmp/foo",
+            "rm -rf /home/user/scratch",
+            "rm -rf /etc/something",
+            "rm -rf ./build",
+            "rm -rf ../sibling-dir",
+            "rm -rf node_modules",
+            "rm -rf $HOME/.cache",
+            "rm -rf ~/scratch",
+        ],
+    )
+    def test_allows_legitimate(self, config: dict, cmd: str) -> None:
+        decision, _ = guard.evaluate_rules(cmd, config)
+        assert decision == "allow", f"expected allow for: {cmd}"
+
+
 class TestApprovalCache:
     def test_no_approval_returns_false(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

@@ -40,10 +40,10 @@ rules:
 
   - id: rm-rf-root
     category: filesystem
-    pattern: '\brm\s+(-[^\s]*r[^\s]*f|-[^\s]*f[^\s]*r|-rf|-fr|--recursive\s+--force|--force\s+--recursive)\s+(/|/\*|\$HOME|~|\.|\.\./)'
+    pattern: '\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*|--recursive\s+--force|--force\s+--recursive)\s+(?:/|/\*|\$HOME|~|\.\.|\.)(?:\s|$|;|&|\|)'
     search: true
     decision: deny
-    reason: "FORBIDDEN: rm -rf on /, $HOME, ~, ., or near-root paths is catastrophic. Be explicit about what you're deleting."
+    reason: "FORBIDDEN: rm -rf on /, /*, $HOME, ~, ., or .. (when they ARE the argument, not a prefix) is catastrophic. The rule allows any path that contains the dangerous prefix, e.g. /var/log or ./build, because the literal argument has more after it."
 
   - id: chmod-777
     category: filesystem
