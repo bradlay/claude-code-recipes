@@ -29,7 +29,7 @@ def data_dir() -> Path:
     pd = os.environ.get("CLAUDE_PLUGIN_DATA")
     if pd:
         return _mkdir_secure(Path(pd))
-    return _mkdir_secure(_xdg("XDG_DATA_HOME", ".local/share") / "claude-bash-audit")
+    return _mkdir_secure(_xdg("XDG_DATA_HOME", ".local/share") / "claude-branch-warn")
 
 
 def hooks_log_dir() -> Path:
@@ -40,6 +40,6 @@ def hooks_raw_jsonl() -> Path:
     return hooks_log_dir() / "hooks-raw.jsonl"
 
 
-def audit_log() -> Path:
-    """The audit trail. Append-only; rotated by the user, not the hook."""
-    return data_dir() / "audit.log"
+def warned_marker() -> Path:
+    """Throttle marker. mtime is the last time we emitted a hint."""
+    return data_dir() / "warned"

@@ -1,6 +1,6 @@
-# Minimal I/O for the PostToolUse(Bash) audit hook: stdin parsing, raw
-# archive, per-event log, and a pass-through emit. Fail-open by default
-# since the audit log is a convenience, not a gate.
+# Minimal I/O for the branch-warn UserPromptSubmit hook: stdin parsing,
+# raw archive, per-event log, and a continue-with-message envelope.
+# Fail-open by default since this hook is informational.
 
 from __future__ import annotations
 
@@ -42,8 +42,6 @@ class HookInvocation:
     event: str
     cwd: Path
     session_id: str
-    tool_name: str | None
-    tool_input: dict[str, Any]
     raw: dict[str, Any]
     hook_script: str
 
@@ -54,6 +52,9 @@ def parse_stdin(hook_script: str) -> HookInvocation:
     except OSError:
         payload = ""
 
+    # Failure to decode stdin JSON is silent: this hook is informational
+    # and a malformed payload from a host-CLI version drift shouldn't
+    # block the user prompt.
     raw: dict[str, Any] = {}
     if payload:
         with contextlib.suppress(json.JSONDecodeError):
@@ -62,16 +63,10 @@ def parse_stdin(hook_script: str) -> HookInvocation:
                 raw = parsed
 
     cwd_raw = raw.get("cwd") or str(Path.cwd())
-    tool_input = raw.get("tool_input")
-    if not isinstance(tool_input, dict):
-        tool_input = {}
-    tool_name_raw = raw.get("tool_name")
     inv = HookInvocation(
-        event=str(raw.get("hook_event_name") or "PostToolUse"),
+        event=str(raw.get("hook_event_name") or "UserPromptSubmit"),
         cwd=Path(cwd_raw),
         session_id=str(raw.get("session_id", "unknown")),
-        tool_name=str(tool_name_raw) if tool_name_raw else None,
-        tool_input=tool_input,
         raw=raw,
         hook_script=hook_script,
     )
@@ -88,7 +83,7 @@ def log(inv: HookInvocation, msg: str, *, level: str = "info") -> None:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     line = f"[{ts}] [{level}] {msg}"
     with contextlib.suppress(OSError):
-        print(f"[bash-audit:{inv.event}] {msg}", file=sys.stderr)
+        print(f"[branch-warn:{inv.event}] {msg}", file=sys.stderr)
     with contextlib.suppress(OSError):
         path = _event_log_path(inv.event)
         existed = path.exists()
@@ -133,9 +128,11 @@ def _write_stdout(payload: dict[str, Any]) -> None:
         sys.stdout.flush()
 
 
-def emit_continue() -> int:
-    """Pass-through. PostToolUse hooks don't need to emit anything to
-    let the tool result through; an empty JSON object is the standard
-    no-op envelope."""
-    _write_stdout({})
+def emit_continue(message: str | None = None) -> int:
+    """Continue the prompt; if `message` is set, emit it as a
+    systemMessage. Empty pass-through otherwise."""
+    payload: dict[str, Any] = {}
+    if message:
+        payload["systemMessage"] = message
+    _write_stdout(payload)
     return 0

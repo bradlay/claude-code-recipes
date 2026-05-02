@@ -7,6 +7,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the marketplace itself follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 loosely (per-plugin versions in their `plugin.json`).
 
+## branch-warn
+
+### 0.1.0 — 2026-05-02
+
+Initial release.
+
+- UserPromptSubmit hook that emits a `systemMessage` reporting the
+  current git branch on every prompt submission, throttled to at most
+  once per hour.
+- Branches in `CLAUDE_BRANCH_WARN_PROTECTED` (default `main,master`)
+  get a louder warning; other branches get a quieter "On branch: X"
+  hint.
+- Throttle window configurable via `CLAUDE_BRANCH_WARN_THROTTLE_SECONDS`.
+- Marker mtime is the throttle clock; delete the file to force a fresh
+  emit.
+- Fail-open: any error returns a pass-through and the prompt proceeds.
+- 10 unit tests.
+
 ## posttooluse-bash-audit
 
 ### 0.1.0 — 2026-05-02
