@@ -33,6 +33,9 @@ _KNOWN_TOP_LEVEL_KEYS = frozenset(
         "matcher",
         "message",
         "stop_hook_active",
+        "source",  # SessionStart: "startup", "compact", "clear", ...
+        "permission_mode",  # PreToolUse includes the active permission mode
+        "tool_use_id",  # PreToolUse includes the originating tool_use id
         "planFilePath",
         "plan_file_path",
     },
