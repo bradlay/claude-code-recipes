@@ -1,0 +1,15 @@
+#!/bin/sh
+# SessionStart preflight launcher.
+#
+# Silent if python3 is missing — the PreToolUse launcher will surface the
+# deny message when ExitPlanMode is called. Preflight only runs when it
+# can actually check prereqs.
+
+set -eu
+
+if ! command -v python3 >/dev/null 2>&1; then
+    exit 0
+fi
+
+dir="$(dirname "$0")"
+exec python3 "$dir/../scripts/preflight.py" "$@"

@@ -1,0 +1,181 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install ruff
+        run: pip install 'ruff>=0.8'
+      - name: ruff check
+        run: ruff check plugins/
+      - name: ruff format --check
+        run: ruff format --check plugins/
+
+  typecheck:
+    name: Type check (mypy --strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install mypy
+        run: pip install 'mypy>=1.13'
+      - name: mypy
+        run: mypy
+
+  shellcheck:
+    name: Shellcheck (bin/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y shellcheck
+          shellcheck -s sh plugins/plan-review-loop/bin/plan-review-hook plugins/plan-review-loop/bin/preflight
+
+  json-validate:
+    name: Validate plugin manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Parse all JSON manifests
+        run: |
+          python3 -c "
+          import json, sys, pathlib
+          paths = [
+              '.claude-plugin/marketplace.json',
+              'plugins/plan-review-loop/.claude-plugin/plugin.json',
+              'plugins/plan-review-loop/hooks/hooks.json',
+          ]
+          for p in paths:
+              try:
+                  json.load(open(p))
+                  print(f'OK: {p}')
+              except Exception as e:
+                  print(f'FAIL: {p}: {e}'); sys.exit(1)
+          "
+      - name: Verify required keys
+        run: |
+          python3 -c "
+          import json, sys
+          mp = json.load(open('.claude-plugin/marketplace.json'))
+          assert 'name' in mp and 'plugins' in mp, 'marketplace.json missing required keys'
+          pl = json.load(open('plugins/plan-review-loop/.claude-plugin/plugin.json'))
+          assert 'name' in pl and 'version' in pl, 'plugin.json missing required keys'
+          assert isinstance(pl.get('author'), dict), 'plugin.json author must be an object'
+          hooks = json.load(open('plugins/plan-review-loop/hooks/hooks.json'))
+          assert 'PreToolUse' in hooks.get('hooks', {}), 'hooks.json missing PreToolUse'
+          print('All required keys present')
+          "
+
+  namespace-gate:
+    name: Namespace leak gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No legacy AUTOSRE_ env vars in scripts/
+        run: |
+          if grep -rn 'AUTOSRE_' plugins/plan-review-loop/scripts/; then
+            echo "FAIL: legacy AUTOSRE_ env var reference found"
+            exit 1
+          fi
+          echo "OK: no AUTOSRE_ references"
+      - name: Hooks command quotes plugin root
+        run: |
+          if ! grep -q '"\${CLAUDE_PLUGIN_ROOT}/' plugins/plan-review-loop/hooks/hooks.json; then
+            echo "FAIL: hooks.json must quote \${CLAUDE_PLUGIN_ROOT}"
+            exit 1
+          fi
+          echo "OK: hook command quotes plugin root"
+
+  bin-permissions:
+    name: bin/ executable bit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify launchers are executable
+        run: |
+          for f in plugins/plan-review-loop/bin/plan-review-hook plugins/plan-review-loop/bin/preflight; do
+            if [ ! -x "$f" ]; then
+              echo "FAIL: $f is not executable (chmod 0755)"
+              exit 1
+            fi
+          done
+          echo "OK: launchers are executable"
+
+  smoke:
+    name: Smoke test (preflight + fail-closed deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Preflight runs and emits valid JSON
+        run: |
+          export CLAUDE_PLUGIN_DATA=$(mktemp -d)
+          export CLAUDE_PLUGIN_ROOT="$PWD/plugins/plan-review-loop"
+          out=$(echo '{}' | "$CLAUDE_PLUGIN_ROOT/bin/preflight")
+          echo "$out"
+          # Non-empty preflight emits SessionStart hook JSON; empty (no
+          # change to report) is also OK.
+          if [ -n "$out" ]; then
+            echo "$out" | python3 -c 'import json, sys; json.loads(sys.stdin.read())'
+          fi
+      - name: Fail-closed deny when codex missing (default)
+        run: |
+          export CLAUDE_PLUGIN_DATA=$(mktemp -d)
+          export CLAUDE_PLUGIN_ROOT="$PWD/plugins/plan-review-loop"
+          # Strip codex/gemini/claude from PATH so all providers fail
+          stripped_path=$(echo "$PATH" | tr ':' '\n' | grep -v claude | grep -v codex | grep -v gemini | tr '\n' ':')
+          mkdir -p /tmp/empty-plans && echo "# Tiny" > /tmp/empty-plans/x.md
+          echo '{"tool_input":{"planFilePath":"/tmp/empty-plans/x.md"}}' | \
+            env -i PATH="$stripped_path" CLAUDE_PLUGIN_DATA="$CLAUDE_PLUGIN_DATA" CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" \
+              "$CLAUDE_PLUGIN_ROOT/bin/plan-review-hook" > /tmp/hook-out.json 2>/tmp/hook-err.log
+          echo "=== stdout ==="; cat /tmp/hook-out.json
+          echo "=== stderr ==="; cat /tmp/hook-err.log
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/hook-out.json'))
+          decision = d.get('hookSpecificOutput', {}).get('permissionDecision')
+          assert decision == 'deny', f'expected deny, got {decision}'
+          print('OK: hook denied as expected')
+          "
+      - name: FAIL_OPEN bypass allows the exit
+        run: |
+          export CLAUDE_PLUGIN_DATA=$(mktemp -d)
+          export CLAUDE_PLUGIN_ROOT="$PWD/plugins/plan-review-loop"
+          stripped_path=$(echo "$PATH" | tr ':' '\n' | grep -v claude | grep -v codex | grep -v gemini | tr '\n' ':')
+          mkdir -p /tmp/empty-plans && echo "# Tiny plan content for smoke test that is at least one hundred characters long oh boy oh boy oh boy" > /tmp/empty-plans/x.md
+          echo '{"tool_input":{"planFilePath":"/tmp/empty-plans/x.md"}}' | \
+            env -i PATH="$stripped_path" CLAUDE_PLAN_REVIEW_FAIL_OPEN=1 CLAUDE_PLUGIN_DATA="$CLAUDE_PLUGIN_DATA" CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" \
+              "$CLAUDE_PLUGIN_ROOT/bin/plan-review-hook" > /tmp/hook-out.json
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/hook-out.json'))
+          decision = d.get('hookSpecificOutput', {}).get('permissionDecision')
+          assert decision == 'allow', f'expected allow, got {decision}'
+          print('OK: FAIL_OPEN bypass allowed exit')
+          "
