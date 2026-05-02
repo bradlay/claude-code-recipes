@@ -1,0 +1,28 @@
+#!/bin/sh
+# Bash-guard hook launcher. Fails closed (deny) when prereqs are missing,
+# including python3 itself (the .py hook can't check for python3 because
+# it can't run without it). Set CLAUDE_BASH_GUARD_FAIL_OPEN=1 to bypass.
+
+set -eu
+
+emit_deny() {
+    reason="$1"
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"bash-guard: %s"}}\n' "$reason"
+    exit 0
+}
+
+if [ "${CLAUDE_BASH_GUARD_FAIL_OPEN:-0}" = "1" ]; then
+    bypass_on_missing=1
+else
+    bypass_on_missing=0
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+    if [ "$bypass_on_missing" = "1" ]; then
+        exit 0
+    fi
+    emit_deny "python3 not on PATH. Install Python 3.10+ or set CLAUDE_BASH_GUARD_FAIL_OPEN=1 to bypass."
+fi
+
+dir="$(dirname "$0")"
+exec python3 "$dir/../scripts/bash_guard_hook.py" "$@"

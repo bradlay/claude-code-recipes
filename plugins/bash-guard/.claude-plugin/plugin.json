@@ -1,0 +1,10 @@
+{
+  "name": "bash-guard",
+  "version": "0.1.0",
+  "description": "PreToolUse(Bash) hook that evaluates every shell command against a configurable rule set. Default rules block destructive git operations, filesystem-nuking commands, untrusted curl-pipe-to-shell patterns, and identity-management changes. Rules are user-editable.",
+  "author": {
+    "name": "bradlay"
+  },
+  "homepage": "https://github.com/bradlay/claude-code-recipes",
+  "license": "MIT"
+}
