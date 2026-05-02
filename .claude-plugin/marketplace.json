@@ -24,6 +24,11 @@
       "name": "precompact-context-keeper",
       "source": "./plugins/precompact-context-keeper",
       "description": "PreCompact hook that injects CLAUDE.md + a tiny git-state summary as a systemMessage just before compaction so the post-compaction model still has the project framing."
+    },
+    {
+      "name": "posttooluse-bash-audit",
+      "source": "./plugins/posttooluse-bash-audit",
+      "description": "PostToolUse(Bash) hook that appends every executed Bash command (timestamp + session id + 200-char summary) to a local audit log. Stays local, fail-open."
     }
   ]
 }

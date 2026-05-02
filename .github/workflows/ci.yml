@@ -47,6 +47,8 @@ jobs:
         run: MYPYPATH=plugins/subagent-context-injector/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/subagent-context-injector/scripts
       - name: mypy precompact-context-keeper
         run: MYPYPATH=plugins/precompact-context-keeper/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/precompact-context-keeper/scripts
+      - name: mypy posttooluse-bash-audit
+        run: MYPYPATH=plugins/posttooluse-bash-audit/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/posttooluse-bash-audit/scripts
 
   pytest:
     name: Tests (pytest)
@@ -66,6 +68,8 @@ jobs:
         run: pytest tests/subagent_context_injector
       - name: pytest precompact-context-keeper
         run: pytest tests/precompact_context_keeper
+      - name: pytest posttooluse-bash-audit
+        run: pytest tests/posttooluse_bash_audit
 
   shellcheck:
     name: Shellcheck (bin/)
@@ -75,7 +79,7 @@ jobs:
       - name: Run shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y shellcheck
-          shellcheck -s sh plugins/plan-review-loop/bin/plan-review-hook plugins/plan-review-loop/bin/preflight plugins/bash-guard/bin/bash-guard plugins/subagent-context-injector/bin/subagent-context plugins/precompact-context-keeper/bin/precompact-keeper
+          shellcheck -s sh plugins/plan-review-loop/bin/plan-review-hook plugins/plan-review-loop/bin/preflight plugins/bash-guard/bin/bash-guard plugins/subagent-context-injector/bin/subagent-context plugins/precompact-context-keeper/bin/precompact-keeper plugins/posttooluse-bash-audit/bin/audit
 
   json-validate:
     name: Validate plugin manifests
@@ -99,6 +103,8 @@ jobs:
               'plugins/subagent-context-injector/hooks/hooks.json',
               'plugins/precompact-context-keeper/.claude-plugin/plugin.json',
               'plugins/precompact-context-keeper/hooks/hooks.json',
+              'plugins/posttooluse-bash-audit/.claude-plugin/plugin.json',
+              'plugins/posttooluse-bash-audit/hooks/hooks.json',
           ]
           for p in paths:
               try:

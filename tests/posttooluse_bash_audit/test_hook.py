@@ -31,9 +31,7 @@ def _payload(tool_name: str = "Bash", command: str = "ls", session_id: str = "te
 
 
 class TestAuditLogging:
-    def test_appends_a_line(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_appends_a_line(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
         monkeypatch.setattr("sys.stdin", io.StringIO(_payload(command="ls -la")))
         rc = hook.main()
@@ -42,9 +40,7 @@ class TestAuditLogging:
         assert "ls -la" in log
         assert "test-sess" in log
 
-    def test_appends_multiple_lines(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_appends_multiple_lines(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
 
         for cmd in ("echo a", "echo b", "echo c"):
@@ -56,9 +52,7 @@ class TestAuditLogging:
         assert log_lines[0].endswith("echo a")
         assert log_lines[2].endswith("echo c")
 
-    def test_truncates_long_command(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_truncates_long_command(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
         long_cmd = "x" * 500
         monkeypatch.setattr("sys.stdin", io.StringIO(_payload(command=long_cmd)))
@@ -68,9 +62,7 @@ class TestAuditLogging:
         # Total line should be much shorter than the original command
         assert len(log) < 400
 
-    def test_collapses_newlines(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_collapses_newlines(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
         # Payload uses \\n in JSON to encode a real newline.
         payload = (
@@ -102,9 +94,7 @@ class TestNonBashSkipped:
 
 
 class TestEmptyCommand:
-    def test_empty_string_skipped(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_empty_string_skipped(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
         monkeypatch.setattr("sys.stdin", io.StringIO(_payload(command="")))
         rc = hook.main()
@@ -113,9 +103,7 @@ class TestEmptyCommand:
 
 
 class TestFilePermissions:
-    def test_audit_log_is_0600(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_audit_log_is_0600(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
         monkeypatch.setattr("sys.stdin", io.StringIO(_payload(command="touch x")))
         hook.main()
