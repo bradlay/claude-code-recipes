@@ -127,6 +127,17 @@ jobs:
           print('All required keys present')
           "
 
+  empty-except-gate:
+    name: Empty-except gate (CodeQL parity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: No try/except <X>: pass patterns in plugin scripts
+        run: python3 scripts/find_empty_excepts.py
+
   namespace-gate:
     name: Namespace leak gate
     runs-on: ubuntu-latest
