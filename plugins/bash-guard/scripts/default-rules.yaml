@@ -1,0 +1,210 @@
+# bash-guard default rules
+#
+# Every rule has the shape:
+#
+#   id:            unique identifier
+#   category:      grouping (cosmetic; only used in logs)
+#   pattern:       regex matched against each sub-command in a chain
+#   decision:      deny | ask | allow  (allow = explicit allowlist)
+#   reason:        message shown when the rule fires
+#   search:        if true, use re.search instead of re.match
+#   extra_search:  optional second regex; both must match
+#
+# Rules are evaluated in order; first match wins. Chains (&&, ||, ;,
+# pipes, &) are split and each sub-command is evaluated independently
+# so `cd /tmp && rm -rf /` cannot bypass an anchored rule.
+#
+# Override per-project: ship your own rules at
+# `${XDG_CONFIG_HOME}/claude-bash-guard/rules.yaml` or set
+# CLAUDE_BASH_GUARD_RULES_FILE=/abs/path/to/rules.yaml.
+#
+# Set CLAUDE_BASH_GUARD_FAIL_OPEN=1 to bypass the gate when prereqs
+# fail; the hook will still emit a visible systemMessage so you
+# notice.
+
+version: "0.1.0"
+
+settings:
+  # `ask` decisions create a one-shot approval valid for this window.
+  # The user re-runs the same command within the window to bypass.
+  approval_expiry_seconds: 60
+  # Branches treated as protected (rules with "{protected_branches}"
+  # in the pattern get expanded with this list).
+  protected_branches: [main, master]
+
+rules:
+
+  # ================================================================
+  # FILESYSTEM CATASTROPHES
+  # ================================================================
+
+  - id: rm-rf-root
+    category: filesystem
+    pattern: '\brm\s+(-[^\s]*r[^\s]*f|-[^\s]*f[^\s]*r|-rf|-fr|--recursive\s+--force|--force\s+--recursive)\s+(/|/\*|\$HOME|~|\.|\.\./)'
+    search: true
+    decision: deny
+    reason: "FORBIDDEN: rm -rf on /, $HOME, ~, ., or near-root paths is catastrophic. Be explicit about what you're deleting."
+
+  - id: chmod-777
+    category: filesystem
+    pattern: '\bchmod\s+(-[^\s]*\s+)?(777|a\+rwx|ugo\+rwx)\b'
+    search: true
+    decision: ask
+    reason: "DANGEROUS: chmod 777 grants world-write. Almost never the right answer; use 0644 / 0755 / 0600."
+
+  - id: dd-block-device
+    category: filesystem
+    pattern: '\bdd\s+.*\bof=/dev/(sd|nvme|hd|mmc|disk)'
+    search: true
+    decision: deny
+    reason: "FORBIDDEN: dd of=/dev/<block-device> overwrites a disk. Use a dedicated flashing tool with explicit confirmation."
+
+  - id: write-to-block-device
+    category: filesystem
+    pattern: '>\s*/dev/(sd|nvme|hd|mmc|disk)'
+    search: true
+    decision: deny
+    reason: "FORBIDDEN: redirecting output to /dev/<block-device> destroys the disk."
+
+  - id: mkfs
+    category: filesystem
+    pattern: '^\s*mkfs(\.|\s)'
+    search: true
+    decision: deny
+    reason: "FORBIDDEN: mkfs formats a filesystem. If you really need this, run it directly outside of Claude."
+
+  # ================================================================
+  # GIT — DESTRUCTIVE
+  # ================================================================
+
+  - id: git-reset-hard
+    category: git-destructive
+    pattern: '^git\s+(-C\s*\S+\s+)?reset\s+--hard\b'
+    decision: deny
+    reason: "FORBIDDEN: `git reset --hard` discards uncommitted changes irreversibly. Stash, commit, or branch first."
+
+  - id: git-checkout-discard
+    category: git-destructive
+    pattern: '^git\s+(-C\s*\S+\s+)?checkout\s+--(\s|$)'
+    decision: deny
+    reason: "FORBIDDEN: `git checkout --` discards working tree changes irreversibly. Commit first if you want to keep them."
+
+  - id: git-restore-discard
+    category: git-destructive
+    pattern: '^git\s+(-C\s*\S+\s+)?restore\b(?!.*--staged)'
+    search: true
+    decision: deny
+    reason: "FORBIDDEN: `git restore` (without --staged) overwrites working tree changes irreversibly. Commit first."
+
+  - id: git-clean-fd
+    category: git-destructive
+    pattern: '^git\s+(-C\s*\S+\s+)?clean\s+(-[^\s]*[fF][^\s]*[dD]|-[^\s]*[dD][^\s]*[fF]|-fd|-df|--force\s+-d)'
+    search: true
+    decision: deny
+    reason: "FORBIDDEN: `git clean -fd` removes untracked files irreversibly. Add them or .gitignore them instead."
+
+  - id: git-stash-drop-clear
+    category: git-destructive
+    pattern: '^git\s+(-C\s*\S+\s+)?stash\s+(drop|clear)\b'
+    decision: ask
+    reason: "DESTRUCTIVE: `git stash drop` / `clear` removes stashed changes irreversibly. Confirm you don't need them."
+
+  # ================================================================
+  # GIT — HISTORY-REWRITING / CHECK-BYPASSING
+  # ================================================================
+
+  - id: git-push-force
+    category: git-history
+    pattern: '^git\s+(-C\s*\S+\s+)?push\b'
+    extra_search: '\s(--force|-f)\b(?!-with-lease)'
+    decision: ask
+    reason: "DESTRUCTIVE: `git push --force` overwrites remote history. Prefer `--force-with-lease` (race-safe) and only use it on personal branches."
+
+  - id: git-commit-no-verify
+    category: git-history
+    pattern: '^git\s+(-C\s*\S+\s+)?commit\b'
+    extra_search: '--no-verify|\s-n\b'
+    decision: deny
+    reason: "FORBIDDEN: `--no-verify` bypasses pre-commit hooks (lint, typecheck, secret-scan). Fix the underlying check, don't skip it."
+
+  - id: git-push-no-verify
+    category: git-history
+    pattern: '^git\s+(-C\s*\S+\s+)?push\b'
+    extra_search: '--no-verify'
+    decision: deny
+    reason: "FORBIDDEN: `--no-verify` bypasses pre-push hooks. Fix the underlying check."
+
+  # ================================================================
+  # NETWORK — UNTRUSTED EXECUTION
+  # ================================================================
+
+  - id: curl-pipe-shell
+    category: network
+    pattern: '\b(curl|wget|fetch)\b[^|]*\|\s*(sh|bash|zsh|ksh)\b'
+    search: true
+    decision: ask
+    reason: "DANGEROUS: piping a fetched script directly into a shell runs whatever the server happens to send right now. Download to a file, inspect, then run."
+
+  - id: eval-curl
+    category: network
+    pattern: '\beval\s+["\$(]*\s*(curl|wget|fetch)\b'
+    search: true
+    decision: deny
+    reason: "FORBIDDEN: `eval` of fetched content executes whatever bytes come back. Almost never what you want."
+
+  - id: bash-process-substitution-curl
+    category: network
+    pattern: '\b(sh|bash|zsh)\s+<\s*\(\s*(curl|wget|fetch)\b'
+    search: true
+    decision: ask
+    reason: "DANGEROUS: process-substitution executes a fetched script. Download to a file and inspect first."
+
+  # ================================================================
+  # IDENTITY / AUTH MANAGEMENT
+  # ================================================================
+  # These commands change global identity state on the machine. They
+  # may be entirely intended (you're setting up a new laptop), but
+  # they're rarely what you want mid-session — `ask` lets the user
+  # confirm.
+
+  - id: gh-auth-login
+    category: identity
+    pattern: '^gh\s+auth\s+(login|switch|setup-git)\b'
+    decision: ask
+    reason: "AUTH CHANGE: `gh auth login/switch` modifies the GitHub identity for ALL gh commands on this machine. Confirm this is what you want."
+
+  - id: git-config-global-system
+    category: identity
+    pattern: '^git\s+config\s+(--global|--system)\b'
+    decision: ask
+    reason: "AUTH/CONFIG CHANGE: `git config --global/--system` rewrites your machine-wide git config. Almost always you want a per-repo `git config` instead. Confirm if intentional."
+
+  - id: wrangler-cloudflared-login
+    category: identity
+    pattern: '^(wrangler|cloudflared)\s+(login|tunnel\s+login)\b'
+    decision: ask
+    reason: "AUTH CHANGE: this writes Cloudflare credentials to ~/.wrangler / ~/.cloudflared. Confirm if intentional."
+
+  - id: npm-login
+    category: identity
+    pattern: '^(npm|yarn|pnpm)\s+(login|adduser)\b'
+    decision: ask
+    reason: "AUTH CHANGE: writes npm credentials to ~/.npmrc. Confirm if intentional."
+
+  # ================================================================
+  # SHELL EXECUTION OF DOWNLOADED OR DECODED CONTENT
+  # ================================================================
+
+  - id: base64-decode-pipe-shell
+    category: backdoor
+    pattern: '\bbase64\b.*-d.*\|\s*(sh|bash|zsh)\b'
+    search: true
+    decision: deny
+    reason: "FORBIDDEN: base64-decoded content piped into a shell is the classic obfuscation pattern. If the content is legitimate, decode to a file and inspect."
+
+  - id: heredoc-to-shell
+    category: backdoor
+    pattern: '<<-?\s*[''"]?\w+[''"]?\s*\|\s*(sh|bash|zsh)\b'
+    search: true
+    decision: ask
+    reason: "DANGEROUS: heredoc piped into a shell executes a multi-line script with no file artifact for review. Prefer writing the script to disk first."

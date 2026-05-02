@@ -7,6 +7,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the marketplace itself follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 loosely (per-plugin versions in their `plugin.json`).
 
+## bash-guard
+
+### 0.1.0 — 2026-05-02
+
+Initial release.
+
+- PreToolUse(Bash) hook with rules-based command evaluation.
+- ~20 default rules covering filesystem catastrophes, destructive git
+  ops, history-rewriting, untrusted network execution, and identity
+  changes.
+- Three decision types: `deny` (block), `ask` (one-shot approval),
+  `allow` (explicit allowlist).
+- Compound-command splitting on sequence separators (`&&`, `||`, `;`,
+  `&`, newlines); pipelines preserved as units so anti-pipe-to-shell
+  rules see the full pipeline.
+- `git -C <path>` normalization so anchored rules still fire.
+- User overrides via `${XDG_CONFIG_HOME}/claude-bash-guard/rules.yaml`
+  or `CLAUDE_BASH_GUARD_RULES_FILE`.
+- Fail-closed default; `CLAUDE_BASH_GUARD_FAIL_OPEN=1` bypass.
+- POSIX shell launcher fails closed when `python3` is missing.
+- 0700 dirs, 0600 files for state and logs.
+- 23 unit tests + CI smoke matrix exercising representative commands.
+
 ## plan-review-loop
 
 ### 0.1.0 — 2026-05-02

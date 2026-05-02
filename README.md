@@ -15,6 +15,7 @@ Plugins I use day-to-day. Public so others can pull what's useful.
 | Plugin | What it does |
 |---|---|
 | [`plan-review-loop`](./plugins/plan-review-loop/) | Runs Codex against every plan before the planner is allowed to exit plan mode. Blocking findings deny the exit and feed back as context for the next iteration. |
+| [`bash-guard`](./plugins/bash-guard/) | Evaluates every Bash command against a configurable rule set. Default rules block destructive git ops, filesystem-nuking commands, untrusted `curl \| sh` patterns, and identity-management changes. |
 
 ## License
 
