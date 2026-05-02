@@ -100,7 +100,8 @@ def _load_state(plan_path: Path, content_hash: str) -> dict[str, Any]:
     sp = _state_path(plan_path, content_hash)
     if sp.exists():
         try:
-            return json.loads(sp.read_text())
+            loaded: dict[str, Any] = json.loads(sp.read_text())
+            return loaded
         except (json.JSONDecodeError, OSError):
             pass
     return {
@@ -144,7 +145,8 @@ def _read_sentinel(plan_path: Path) -> dict[str, Any] | None:
     if not sp.exists():
         return None
     try:
-        return json.loads(sp.read_text())
+        data: dict[str, Any] = json.loads(sp.read_text())
+        return data
     except (json.JSONDecodeError, OSError):
         return None
 

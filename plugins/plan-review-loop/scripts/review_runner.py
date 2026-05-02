@@ -11,6 +11,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
@@ -19,7 +20,7 @@ if str(_THIS_DIR) not in sys.path:
 from _lib.runner import review_plan  # noqa: E402
 
 
-def _format_findings(findings: list[dict]) -> str:
+def _format_findings(findings: list[dict[str, Any]]) -> str:
     if not findings:
         return "(no findings)"
     counts: dict[str, int] = {}

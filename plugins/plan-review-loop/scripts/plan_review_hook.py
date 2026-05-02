@@ -20,6 +20,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
@@ -44,7 +45,7 @@ def _write_health(outcome_status: str, *, provider: str = "", error: str = "") -
             path.chmod(0o600)
 
 
-def _format_findings(findings: list[dict], provider: str) -> str:
+def _format_findings(findings: list[dict[str, Any]], provider: str) -> str:
     lines = [f"Plan review findings (via {provider}):\n"]
     counts: dict[str, int] = {}
 
