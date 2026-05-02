@@ -9,6 +9,11 @@
       "name": "plan-review-loop",
       "source": "./plugins/plan-review-loop",
       "description": "Closed-loop Codex review on ExitPlanMode. Denies plan exit on P0/P1 findings; loop closes when the plan is clean."
+    },
+    {
+      "name": "bash-guard",
+      "source": "./plugins/bash-guard",
+      "description": "PreToolUse(Bash) hook that evaluates every shell command against a configurable rule set. Blocks destructive git ops, filesystem-nuking commands, untrusted curl-pipe-to-shell patterns, and identity-management changes. Rules are user-editable."
     }
   ]
 }

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 _PLUGIN_SCRIPTS = (
-    Path(__file__).resolve().parent.parent
+    Path(__file__).resolve().parent.parent.parent
     / "plugins"
     / "plan-review-loop"
     / "scripts"
