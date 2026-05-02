@@ -53,14 +53,15 @@ def parse_stdin(hook_script: str) -> HookInvocation:
     except OSError:
         payload = ""
 
+    # Failure to decode stdin JSON is silent: the hook is informational
+    # and a malformed payload from a host-CLI version drift shouldn't
+    # block compaction. The empty raw dict propagates downstream.
     raw: dict[str, Any] = {}
     if payload:
-        try:
+        with contextlib.suppress(json.JSONDecodeError):
             parsed = json.loads(payload)
             if isinstance(parsed, dict):
                 raw = parsed
-        except json.JSONDecodeError:
-            pass
 
     cwd_raw = raw.get("cwd") or str(Path.cwd())
     inv = HookInvocation(
