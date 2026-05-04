@@ -87,7 +87,13 @@ Under `${CLAUDE_PLUGIN_DATA}/`:
 
 - `review-state/`: per-plan iteration state, `.lock`, `.in-progress`.
 - `review-log/`: per-iteration JSON dumps (full prompt and provider
-  stdout by default). Pruned to 50 most recent.
+  stdout by default). Records carry `result_status` (one of `ok`,
+  `error`, `empty`, `unparseable`), `shadow_config_signature`, and
+  `parse_error`. Older records without those fields get classified
+  on read by the same rules. Non-shadow records pruned to 50 most
+  recent; shadow records kept by time (8 days, with a 200-record
+  fresh-install floor; override with
+  `CLAUDE_PLAN_REVIEW_SHADOW_RETAIN_DAYS`).
 - `review-chain.log`: append-only chain-execution log with timestamps
   for each provider attempt.
 - `hooks/`: per-event hook activity logs and a JSONL archive of every
@@ -110,6 +116,24 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/review_runner.py /path/to/plan.md --chain 
 
 Same code path as the hook. Iteration state and locking are shared.
 
+## Inspecting shadow runs
+
+Shadow runs (parallel reviews emitted post-decision when
+`CLAUDE_PLAN_REVIEW_SHADOW` is set) land as `*_shadow.json`
+under `review-log/`. The `plan-review-shadow` CLI surfaces them:
+
+| Command | Purpose |
+| --- | --- |
+| `plan-review-shadow list` | Newest 20 shadow runs (filter `--since`, `--status ok\|fail\|all`). |
+| `plan-review-shadow show latest` | Full record for the newest run. Pass a path to inspect a specific record. |
+| `plan-review-shadow stats` | Both views: 7d history aggregates across all signatures, plus 24h health under the current signature. `--scope history` or `--scope current` to constrain. |
+
+`--json` for machine output. `--help` for filters.
+
+The `current` view is the same severity preflight emits at
+SessionStart; pre-flight will also flag chronic shadow failure
+(`degraded`, `critical`) until the operator resolves it.
+
 ## Troubleshooting
 
 **Hook didn't fire.** `/reload-plugins` (or restart the host CLI).
@@ -130,6 +154,20 @@ finish.
 **Stale `.in-progress` after a crash.** Detected automatically via
 `os.kill(pid, 0)`. If it's wedged, delete the relevant
 `${CLAUDE_PLUGIN_DATA}/review-state/*.in-progress`.
+
+**Preflight reports `shadow degraded` / `shadow critical`.** Real
+shadow reviews are failing under the current config. Run
+`plan-review-shadow stats --scope current` for the in-scope rate
+and consecutive-failure streak; `plan-review-shadow list --status fail`
+to see recent failures. Common causes: the local backend is down
+(check the URL/model env vars), or `CLAUDE_PLAN_REVIEW_LOCAL_MAX_TOKENS`
+is too low for the model's reasoning budget (empty output classifies
+as `empty`). Editing any of the shadow env vars rotates the
+`shadow_config_signature` and clears in-scope failures naturally.
+
+**Preflight reports `shadow warming`.** Zero in-scope shadow runs
+under the current config — either freshly enabled or freshly
+re-configured. Trigger one ExitPlanMode to validate.
 
 ## Disable / uninstall
 
