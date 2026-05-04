@@ -36,7 +36,7 @@ from .chain import (
 PROBE_TIMEOUT_SECONDS = 60
 PROBE_CACHE_TTL_SECONDS = 24 * 3600
 PROBE_PROMPT = "Reply with the single word: ok"
-PROBE_EXPECTED_TOKEN = "ok"
+PROBE_EXPECTED_REPLY = "ok"
 _SECURE_FILE_MODE = 0o600
 
 
@@ -63,7 +63,8 @@ def _load_cache() -> dict[str, dict[str, Any]]:
     if not path.exists():
         return {}
     with contextlib.suppress(OSError, json.JSONDecodeError):
-        return json.loads(path.read_text())
+        result: dict[str, dict[str, Any]] = json.loads(path.read_text())
+        return result
     return {}
 
 
@@ -121,7 +122,7 @@ def _run_cli_probe(argv: list[str]) -> tuple[bool, str]:
         stderr_preview = (result.stderr or "").strip()[:300]
         return False, f"rc={result.returncode}; stderr: {stderr_preview!r}"
     body = (result.stdout or "").strip().lower()
-    if PROBE_EXPECTED_TOKEN not in body:
+    if PROBE_EXPECTED_REPLY not in body:
         return False, f"unexpected response: {body[:200]!r}"
     return True, body[:200]
 

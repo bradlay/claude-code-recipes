@@ -32,7 +32,7 @@ from _lib.chain import (  # noqa: E402
     _chain_from_env,
     _shadow_from_env,
 )
-from _lib.probes import probe_provider  # noqa: E402
+from _lib.probes import ProbeResult, probe_provider  # noqa: E402
 from _lib.runner import default_chain  # noqa: E402
 
 
@@ -59,7 +59,7 @@ def _resolve_targets(provider: str | None) -> list[str]:
     return targets
 
 
-def _format_human(targets: list[str], results: list) -> str:
+def _format_human(targets: list[str], results: list[ProbeResult]) -> str:
     chain = _chain_from_env() or default_chain()
     shadow = _shadow_from_env()
     lines: list[str] = []

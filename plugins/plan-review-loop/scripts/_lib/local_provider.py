@@ -36,6 +36,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from typing import Any
 
 DEFAULT_URL = "http://localhost:8010"
 DEFAULT_TIMEOUT = 600
@@ -103,14 +104,15 @@ def base_url() -> str:
     return _env_str("CLAUDE_PLAN_REVIEW_LOCAL_URL", DEFAULT_URL).rstrip("/")
 
 
-def _http_get_json(url: str, *, timeout: float) -> dict:
+def _http_get_json(url: str, *, timeout: float) -> dict[str, Any]:
     req = urllib.request.Request(url, method="GET")  # noqa: S310 - http(s) only via env
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
         body = resp.read().decode("utf-8")
-    return json.loads(body)
+    result: dict[str, Any] = json.loads(body)
+    return result
 
 
-def _http_post_json(url: str, payload: dict, *, timeout: float) -> dict:
+def _http_post_json(url: str, payload: dict[str, Any], *, timeout: float) -> dict[str, Any]:
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(  # noqa: S310 - http(s) only via env
         url,
@@ -120,7 +122,8 @@ def _http_post_json(url: str, payload: dict, *, timeout: float) -> dict:
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
         body = resp.read().decode("utf-8")
-    return json.loads(body)
+    result: dict[str, Any] = json.loads(body)
+    return result
 
 
 def resolve_model(url: str) -> str:
@@ -160,7 +163,7 @@ def call_model(url: str, model_id: str, prompt: str) -> str:
     max_tokens = _env_int("CLAUDE_PLAN_REVIEW_LOCAL_MAX_TOKENS", DEFAULT_MAX_TOKENS)
     priority = _env_int("CLAUDE_PLAN_REVIEW_LOCAL_PRIORITY", DEFAULT_PRIORITY)
 
-    payload: dict = {
+    payload: dict[str, Any] = {
         "model": model_id,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
