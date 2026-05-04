@@ -102,6 +102,32 @@ class CycleLog:
                     out.add(title)
         return out
 
+    @property
+    def result_status(self) -> str:
+        """Semantic classification: ok / error / empty / unparseable / unknown.
+
+        Post-A.0 records persist `result_status` directly. Pre-A.0
+        records are reclassified via the shared legacy helper —
+        `error`/`returncode!=0` → error; empty stdout → empty;
+        reparseable stdout → ok or unparseable depending on the
+        new parser's verdict; otherwise unknown.
+        """
+        stored = self.data.get("result_status")
+        if isinstance(stored, str) and stored:
+            return stored
+        # Lazy import to avoid circular deps.
+        from _lib._legacy_classify import classify_legacy_record  # noqa: PLC0415
+
+        return classify_legacy_record(self.data)
+
+    @property
+    def shadow_config_signature(self) -> str:
+        """16-char hex signature of the shadow runtime config the
+        record was emitted under (post-A.0). Pre-A.0 records have
+        no signature and return an empty string."""
+        v = self.data.get("shadow_config_signature")
+        return str(v) if isinstance(v, str) else ""
+
 
 def _load_cycle_log(p: Path) -> CycleLog | None:
     try:
