@@ -140,8 +140,12 @@ def _report_signature(report: dict[str, Any]) -> str:
     # Probe outcomes (ok per provider + cred signature) are part of the
     # signature so a flipped auth state forces a fresh SessionStart context.
     probe_summary = [
-        {"name": p["name"], "ok": p["ok"], "model": p.get("model", ""),
-         "cred": p.get("cred_signature", "")}
+        {
+            "name": p["name"],
+            "ok": p["ok"],
+            "model": p.get("model", ""),
+            "cred": p.get("cred_signature", ""),
+        }
         for p in report.get("probes", [])
     ]
     sig_input = json.dumps(

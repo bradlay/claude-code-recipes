@@ -307,8 +307,7 @@ def _dispatch_shadow_runs(
         return []
 
     _file_log(
-        f"shadow dispatch: providers={shadow_providers} primary={primary_provider} "
-        f"job={job_path}",
+        f"shadow dispatch: providers={shadow_providers} primary={primary_provider} job={job_path}",
     )
     return shadow_providers
 

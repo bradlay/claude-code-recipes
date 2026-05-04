@@ -150,9 +150,7 @@ def resolve_model(url: str) -> str:
 
     model_id = data[0].get("id")
     if not isinstance(model_id, str) or not model_id:
-        raise LocalProviderError(
-            f"GET {url}/v1/models returned malformed data[0]: {data[0]!r}"
-        )
+        raise LocalProviderError(f"GET {url}/v1/models returned malformed data[0]: {data[0]!r}")
     return model_id
 
 
@@ -191,9 +189,7 @@ def call_model(url: str, model_id: str, prompt: str) -> str:
             f"POST {url}/v1/chat/completions returned {exc.code}: {err_body}"
         ) from exc
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
-        raise LocalProviderError(
-            f"POST {url}/v1/chat/completions failed: {exc}"
-        ) from exc
+        raise LocalProviderError(f"POST {url}/v1/chat/completions failed: {exc}") from exc
 
     try:
         content = body["choices"][0]["message"]["content"]

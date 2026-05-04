@@ -130,28 +130,44 @@ def _run_cli_probe(argv: list[str]) -> tuple[bool, str]:
 def _probe_codex() -> tuple[bool, str]:
     if shutil.which("codex") is None:
         return False, "codex not on PATH"
-    return _run_cli_probe([
-        "codex", "exec",
-        "-c", f'model="{CODEX_MODEL}"',
-        "-c", 'model_reasoning_effort="low"',
-        "--skip-git-repo-check",
-    ])
+    return _run_cli_probe(
+        [
+            "codex",
+            "exec",
+            "-c",
+            f'model="{CODEX_MODEL}"',
+            "-c",
+            'model_reasoning_effort="low"',
+            "--skip-git-repo-check",
+        ]
+    )
 
 
 def _probe_gemini() -> tuple[bool, str]:
     if shutil.which("gemini") is None:
         return False, "gemini not on PATH"
-    return _run_cli_probe([
-        "gemini", "--model", GEMINI_MODEL, "-p", "",
-    ])
+    return _run_cli_probe(
+        [
+            "gemini",
+            "--model",
+            GEMINI_MODEL,
+            "-p",
+            "",
+        ]
+    )
 
 
 def _probe_claude() -> tuple[bool, str]:
     if shutil.which("claude") is None:
         return False, "claude not on PATH"
-    return _run_cli_probe([
-        "claude", "--print", "--model", CLAUDE_SONNET_MODEL,
-    ])
+    return _run_cli_probe(
+        [
+            "claude",
+            "--print",
+            "--model",
+            CLAUDE_SONNET_MODEL,
+        ]
+    )
 
 
 def _probe_local() -> tuple[bool, str]:
@@ -217,8 +233,13 @@ def probe_provider(name: str, *, force: bool = False) -> ProbeResult:
     }.get(name, "")
 
     result = ProbeResult(
-        name=name, ok=ok, detail=detail, model=model,
-        last_probed=now, cred_signature=sig, cached=False,
+        name=name,
+        ok=ok,
+        detail=detail,
+        model=model,
+        last_probed=now,
+        cred_signature=sig,
+        cached=False,
     )
     cache[name] = result.to_dict()
     with contextlib.suppress(OSError):

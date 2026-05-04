@@ -40,8 +40,7 @@ def _resolve_targets(provider: str | None) -> list[str]:
     if provider:
         if provider not in PROVIDER_CMDS:
             print(
-                f"unknown provider: {provider!r}. "
-                f"Allowed: {', '.join(PROVIDER_CMDS)}",
+                f"unknown provider: {provider!r}. Allowed: {', '.join(PROVIDER_CMDS)}",
                 file=sys.stderr,
             )
             sys.exit(2)
@@ -78,21 +77,23 @@ def _format_human(targets: list[str], results: list[ProbeResult]) -> str:
         cache_marker = " [cached]" if r.cached else ""
         status = "ok " if r.ok else "FAIL"
         lines.append(
-            f"  {status}  {r.name.ljust(width)}  ({scope_str})  "
-            f"model={r.model!r}{cache_marker}",
+            f"  {status}  {r.name.ljust(width)}  ({scope_str})  model={r.model!r}{cache_marker}",
         )
         if not r.ok:
             lines.append(f"        {r.detail}")
     if any(not r.ok for r in results):
         lines.append("")
         lines.append("Some probes failed. Common fixes:")
-        lines.append("  - codex:  `codex login status` / "
-                     "`printenv OPENAI_API_KEY | codex login --with-api-key`")
-        lines.append("  - gemini: re-auth via `gemini` first run, "
-                     "or set GEMINI_API_KEY")
+        lines.append(
+            "  - codex:  `codex login status` / "
+            "`printenv OPENAI_API_KEY | codex login --with-api-key`"
+        )
+        lines.append("  - gemini: re-auth via `gemini` first run, or set GEMINI_API_KEY")
         lines.append("  - claude: `claude --version`; refresh Claude Code login")
-        lines.append("  - local:  ensure CLAUDE_PLAN_REVIEW_LOCAL_URL backend "
-                     "(e.g. autosre vLLM) is up and serving the expected model")
+        lines.append(
+            "  - local:  ensure CLAUDE_PLAN_REVIEW_LOCAL_URL backend "
+            "(e.g. autosre vLLM) is up and serving the expected model"
+        )
     return "\n".join(lines)
 
 

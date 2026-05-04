@@ -276,8 +276,7 @@ def _render_text(
 
     lines.append("Per-provider:")
     lines.append(
-        f"  {'provider':<14} {'runs':>5} {'err%':>6} {'block%':>7} "
-        f"{'mean-s':>7} {'mean-find':>10}",
+        f"  {'provider':<14} {'runs':>5} {'err%':>6} {'block%':>7} {'mean-s':>7} {'mean-find':>10}",
     )
     for provider in sorted(summaries):
         s = summaries[provider]
@@ -303,8 +302,7 @@ def _render_text(
 
     lines.append(f"Primary vs shadow agreement  (n={len(pairs)} pairs):")
     lines.append(
-        f"  {'primary':<10} {'shadow':<10} {'pairs':>6} "
-        f"{'decision%':>10} {'jaccard':>8}",
+        f"  {'primary':<10} {'shadow':<10} {'pairs':>6} {'decision%':>10} {'jaccard':>8}",
     )
     for (primary, shadow), bucket in sorted(by_combo.items()):
         decision_pct = sum(1 for p in bucket if p.decision_match) / len(bucket) * 100
