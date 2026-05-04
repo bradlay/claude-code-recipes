@@ -52,6 +52,26 @@ class ReviewOutcome:
     error: str = ""
 
 
+_DEFAULT_MAX_ITERATIONS = 5
+
+
+def _max_iterations() -> int:
+    """Cap on review iterations per plan. After this many rounds,
+    the loop exits with `clean` status and a stderr warning so the
+    operator isn't stuck in an infinite review→address cycle.
+
+    Override via CLAUDE_PLAN_REVIEW_MAX_ITERATIONS env var.
+    """
+    raw = os.environ.get("CLAUDE_PLAN_REVIEW_MAX_ITERATIONS", "").strip()
+    if not raw:
+        return _DEFAULT_MAX_ITERATIONS
+    try:
+        value = int(raw)
+        return value if value > 0 else _DEFAULT_MAX_ITERATIONS
+    except ValueError:
+        return _DEFAULT_MAX_ITERATIONS
+
+
 def _path_lock_key(plan_path: Path) -> str:
     """Path-only key. Locks serialize per plan path, regardless of edits."""
     abs_path = str(plan_path.resolve())
@@ -193,8 +213,15 @@ Your task is focused:
 2. Check that the fixes did not introduce NEW issues (regressions)
 3. Do NOT raise entirely new concerns unrelated to the previous findings; \
 the goal is convergence, not expanding scope
+4. Do NOT re-litigate issues already resolved in earlier iterations (listed below). \
+The author and a prior reviewer have agreed those are addressed; flagging them again \
+creates a loop. Only re-flag a resolved issue if a NEW change in this iteration \
+demonstrably regresses it.
 
-Previous findings that should now be resolved:
+Previously RESOLVED issues (do not re-flag unless this iteration's changes regressed them):
+{resolved_titles_text}
+
+Previous findings that should now be resolved in this iteration:
 {previous_findings_text}
 
 UPDATED PLAN:
@@ -328,6 +355,7 @@ def review_plan(
             state = {
                 "iteration": 0,
                 "previous_findings": [],
+                "resolved_titles": [],
                 "plan_hash": content_hash,
                 "last_reviewed_at": "",
                 "last_review_status": "not_reviewed",
@@ -337,6 +365,10 @@ def review_plan(
         state["iteration"] += 1
         iteration = state["iteration"]
         previous_findings = state.get("previous_findings", [])
+        # Accumulated: every finding title from every prior
+        # iteration. Passed to the reviewer so resolved
+        # issues aren't re-litigated.
+        resolved_titles = list(state.get("resolved_titles", []))
 
         metadata = {
             "plan_path": str(plan_path),
@@ -347,7 +379,40 @@ def review_plan(
             "plan_hash": content_hash,
         }
 
-        if iteration <= 2 or not previous_findings:
+        # Iteration cap. Beyond this, allow with warning so
+        # the loop can't run indefinitely.
+        max_iter = _max_iterations()
+        if iteration > max_iter:
+            logger.info(
+                "plan_review_iter_cap_hit: plan=%r iteration=%d max=%d",
+                str(plan_path),
+                iteration,
+                max_iter,
+            )
+            now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            state["last_reviewed_at"] = now
+            state["last_review_status"] = "iter_cap"
+            state["last_review_findings_count"] = 0
+            _save_state(plan_path, content_hash, state)
+            return ReviewOutcome(
+                status="clean",
+                findings=[],
+                questions=[],
+                provider="iter_cap",
+                iteration=iteration,
+                elapsed_seconds=0.0,
+                error=(
+                    f"plan-review-loop: hit iteration cap ({max_iter}); "
+                    f"allowing exit. Set "
+                    f"CLAUDE_PLAN_REVIEW_MAX_ITERATIONS to override."
+                ),
+            )
+
+        # Use re-review from iteration 2 onward whenever
+        # there are prior findings to verify (drop the
+        # earlier `iteration <= 2` clause that forced iter
+        # 2 to do a fresh review and ignore iter 1's work).
+        if not previous_findings and not resolved_titles:
             prompt = INITIAL_REVIEW_PROMPT.format(plan_content=plan_content)
         else:
             prev_lines: list[str] = []
@@ -357,10 +422,17 @@ def review_plan(
                 desc = f.get("description", "")
                 prev_lines.append(f"  {i}. [{sev}] {title}: {desc[:200]}")
 
+            if resolved_titles:
+                resolved_lines = [f"  - {t}" for t in resolved_titles[-50:]]
+                resolved_text = "\n".join(resolved_lines)
+            else:
+                resolved_text = "  (none)"
+
             prompt = RE_REVIEW_PROMPT.format(
                 iteration=iteration,
                 prev_count=len(previous_findings),
-                previous_findings_text="\n".join(prev_lines),
+                previous_findings_text="\n".join(prev_lines) or "  (none)",
+                resolved_titles_text=resolved_text,
                 plan_content=plan_content,
             )
 
@@ -380,6 +452,15 @@ def review_plan(
         has_blocking = len(p0_p1) > 0
 
         now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        # Accumulate every prior finding's title into
+        # resolved_titles before overwriting previous_findings.
+        # Caps at 200 to bound state-file size.
+        prior_titles = state.get("resolved_titles", [])
+        for f in previous_findings:
+            t = f.get("title", "")
+            if t and t not in prior_titles:
+                prior_titles.append(t)
+        state["resolved_titles"] = prior_titles[-200:]
         state["previous_findings"] = findings
         state["plan_hash"] = content_hash
         state["last_reviewed_at"] = now
