@@ -23,6 +23,7 @@ import json
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -127,6 +128,24 @@ class CycleLog:
         no signature and return an empty string."""
         v = self.data.get("shadow_config_signature")
         return str(v) if isinstance(v, str) else ""
+
+    @property
+    def event_time_epoch(self) -> float:
+        """Unix epoch parsed from the record's `timestamp`. 0.0 when
+        absent or unparseable — falls back to file mtime callers can
+        consult separately if they care."""
+        raw = self.data.get("timestamp")
+        if not isinstance(raw, str) or not raw:
+            return 0.0
+        # `time.strftime("%Y-%m-%dT%H:%M:%S%z")` writes either +HHMM
+        # or -HHMM; datetime.fromisoformat accepts both since 3.11.
+        try:
+            return datetime.fromisoformat(raw).timestamp()
+        except ValueError:
+            # Older records may use 'Z' suffix.
+            with contextlib.suppress(ValueError):
+                return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+            return 0.0
 
 
 def _load_cycle_log(p: Path) -> CycleLog | None:
