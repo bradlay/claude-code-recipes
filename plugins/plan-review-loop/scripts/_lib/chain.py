@@ -20,12 +20,15 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from . import paths
+from ._shadow_signature import current_shadow_config_signature
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +65,37 @@ MAX_STDOUT_LOG = 2_097_152
 MAX_STDERR_LOG = 512_000
 
 _LOG_RETAIN = 50  # prune oldest entries beyond this count
+# (applies to non-shadow logs only; shadow
+# logs use the time-based pruner below).
+
+# Shadow-log retention: time-based with a count floor for fresh
+# installs. The 24h fail-rate window and 7-day stale check both
+# require the actual record set to be intact, so a pure count
+# floor would silently drop window data on any active install.
+SHADOW_RETAIN_DAYS_DEFAULT = 8  # > 7d health window + slack
+SHADOW_RETAIN_COUNT_FLOOR = 200  # protects fresh installs
+
+
+def _shadow_retain_days() -> int:
+    """Operator override; clamped at the health-window floor."""
+    raw = os.environ.get("CLAUDE_PLAN_REVIEW_SHADOW_RETAIN_DAYS", "").strip()
+    if not raw:
+        return SHADOW_RETAIN_DAYS_DEFAULT
+    try:
+        value = int(raw)
+    except ValueError:
+        return SHADOW_RETAIN_DAYS_DEFAULT
+    return max(value, SHADOW_RETAIN_DAYS_DEFAULT)
+
+
+# Test seam — pytest monkeypatches this to deterministically
+# pause writers between tempfile flush/fsync and os.replace.
+# Default no-op; production code never sets it.
+def _atomic_replace_hook_default() -> None:
+    return None
+
+
+_ATOMIC_REPLACE_HOOK: Callable[[], None] = _atomic_replace_hook_default
 
 
 def _metadata_only_logs() -> bool:
@@ -87,12 +121,48 @@ def _file_log(msg: str) -> None:
 
 
 def _prune_log_dir(directory: Path, retain: int = _LOG_RETAIN) -> None:
-    """Keep only the most recent `retain` JSON files."""
+    """Keep only the most recent `retain` JSON files. Applied to
+    non-shadow records; shadow records use `_prune_shadow_log_dir`."""
     with contextlib.suppress(OSError):
-        entries = sorted(directory.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        for stale in entries[retain:]:
+        non_shadow = [p for p in directory.glob("*.json") if not p.stem.endswith("_shadow")]
+        non_shadow.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        for stale in non_shadow[retain:]:
             with contextlib.suppress(OSError):
                 stale.unlink()
+
+
+def _prune_shadow_log_dir(directory: Path) -> None:
+    """Time-based shadow retention: keep all records newer than
+    SHADOW_RETAIN_DAYS regardless of count, plus the newest
+    SHADOW_RETAIN_COUNT_FLOOR records as a sparse-history protection.
+
+    Suppresses FileNotFoundError around stat() and unlink() to
+    tolerate concurrent pruning/scanning races (benign — anything
+    deleted by another process is, by definition, no longer a
+    pruning concern).
+    """
+    cutoff = time.time() - _shadow_retain_days() * 86400
+    entries: list[tuple[Path, float]] = []
+    try:
+        with os.scandir(directory) as it:
+            for e in it:
+                if not e.name.endswith("_shadow.json"):
+                    continue
+                with contextlib.suppress(FileNotFoundError):
+                    entries.append((Path(e.path), e.stat().st_mtime))
+    except FileNotFoundError:
+        return
+
+    entries.sort(key=lambda t: t[1], reverse=True)
+    keep_by_age = {p for p, m in entries if m >= cutoff}
+    keep_by_count = {p for p, _ in entries[:SHADOW_RETAIN_COUNT_FLOOR]}
+    keep = keep_by_age | keep_by_count
+
+    for p, _ in entries:
+        if p in keep:
+            continue
+        with contextlib.suppress(FileNotFoundError, PermissionError):
+            p.unlink()
 
 
 def _save_cycle_log(
@@ -124,6 +194,23 @@ def _save_cycle_log(
     suffix = "_shadow" if shadow else ""
     filename = f"{plan_stem}_{iteration}_{ts}_{provider}{suffix}.json"
 
+    # Compute result_status semantically. `error` set / non-zero rc
+    # always wins. Empty stdout is `empty`. Otherwise we classify
+    # via the parser's explicit parse_ok signal — `findings: []` is
+    # a legitimate clean review and counts as ok.
+    parse_error: str | None = None
+    if error or (returncode is not None and returncode != 0):
+        result_status = "error"
+    elif not stdout or not stdout.strip():
+        result_status = "empty"
+    else:
+        parse = _parse_response_json(stdout)
+        if parse.parse_ok:
+            result_status = "ok"
+        else:
+            result_status = "unparseable"
+            parse_error = parse.parse_error
+
     try:
         log_dir = _review_log_dir()
         log_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -143,6 +230,10 @@ def _save_cycle_log(
             "findings_count": len(findings) if findings else 0,
             "shadow": shadow,
             "primary_provider": primary_provider,
+            # Post-A.0 fields (writer side).
+            "result_status": result_status,
+            "shadow_config_signature": current_shadow_config_signature(),
+            "parse_error": parse_error,
         }
 
         if not _metadata_only_logs():
@@ -158,11 +249,41 @@ def _save_cycle_log(
                 },
             )
 
-        log_path.write_text(json.dumps(log_data, indent=2, ensure_ascii=False) + "\n")
-        with contextlib.suppress(OSError):
-            log_path.chmod(_SECURE_FILE_MODE)
+        # Atomic write: tempfile in same dir, fsync content, replace,
+        # best-effort dir fsync. Reader sees complete file or no file.
+        payload = json.dumps(log_data, indent=2, ensure_ascii=False) + "\n"
+        fd, tmp = tempfile.mkstemp(
+            dir=str(log_dir),
+            prefix=f".{filename}.",
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            with contextlib.suppress(OSError):
+                Path(tmp).chmod(_SECURE_FILE_MODE)
+            _ATOMIC_REPLACE_HOOK()
+            Path(tmp).replace(log_path)
+            # Best-effort dir fsync (POSIX only) for crash-durability.
+            if hasattr(os, "O_DIRECTORY"):
+                with contextlib.suppress(OSError):
+                    dir_fd = os.open(str(log_dir), os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(dir_fd)
+                    finally:
+                        os.close(dir_fd)
+        except Exception:
+            with contextlib.suppress(OSError):
+                Path(tmp).unlink()
+            raise
+
         _file_log(f"cycle log saved: {log_path}")
-        _prune_log_dir(log_dir)
+        if shadow:
+            _prune_shadow_log_dir(log_dir)
+        else:
+            _prune_log_dir(log_dir)
         return log_path
     except OSError as e:
         _file_log(f"failed to save cycle log: {e}")
@@ -449,7 +570,9 @@ def run_chain(
             )
 
             raw = attempt.raw_stdout
-            findings, questions = _parse_response_json(raw)
+            parse = _parse_response_json(raw)
+            findings = parse.findings if parse.parse_ok else None
+            questions = parse.questions if parse.parse_ok else None
 
             _dispatch_shadow_runs(prompt, provider_name, meta)
 
@@ -623,26 +746,54 @@ def _try_provider(
         )
 
 
-def _parse_response_json(
-    raw: str,
-) -> tuple[list[dict[str, Any]] | None, list[str] | None]:
+@dataclass(frozen=True)
+class ReviewParse:
+    """Explicit parse state. parse_ok=True iff the model emitted
+    valid JSON with a `findings` key shaped as a list (possibly
+    empty — `findings: []` IS a legitimate clean review). The old
+    `findings or None` collapsing made `[]` indistinguishable from
+    "couldn't parse anything", which corrupted downstream
+    classification."""
+
+    findings: list[dict[str, Any]] | None
+    questions: list[str] | None
+    parse_ok: bool
+    parse_error: str | None
+
+
+def _parse_response_json(raw: str) -> ReviewParse:
     if not raw or not raw.strip():
-        return None, None
+        return ReviewParse(None, None, False, "empty")
 
     json_match = re.search(r"\{[\s\S]*\}", raw)
     if not json_match:
-        return None, None
+        return ReviewParse(None, None, False, "no JSON object")
 
     try:
         data = json.loads(json_match.group())
-    except json.JSONDecodeError:
-        return None, None
+    except json.JSONDecodeError as e:
+        return ReviewParse(None, None, False, f"json decode: {e}")
 
-    findings = data.get("findings", []) or None
-    questions = data.get("questions", []) or None
-    return findings, questions
+    if not isinstance(data, dict):
+        return ReviewParse(None, None, False, "top-level not object")
+
+    findings_raw = data.get("findings")
+    if not isinstance(findings_raw, list):
+        return ReviewParse(
+            None,
+            None,
+            False,
+            "missing/non-list findings",
+        )
+
+    questions_raw = data.get("questions")
+    questions = questions_raw if isinstance(questions_raw, list) else None
+
+    return ReviewParse(findings_raw, questions, True, None)
 
 
 def _parse_findings_json(raw: str) -> list[dict[str, Any]] | None:
-    findings, _ = _parse_response_json(raw)
-    return findings
+    """Backwards-compatible shim returning just the findings list (or
+    None on parse failure). Existing callers in this module use it."""
+    parse = _parse_response_json(raw)
+    return parse.findings if parse.parse_ok else None
