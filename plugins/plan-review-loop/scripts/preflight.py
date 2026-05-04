@@ -25,7 +25,8 @@ if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR))
 
 from _lib import _io, paths  # noqa: E402
-from _lib.chain import PROVIDER_CMDS, _chain_from_env  # noqa: E402
+from _lib.chain import PROVIDER_CMDS, _chain_from_env, _shadow_from_env  # noqa: E402
+from _lib.probes import ProbeResult, probe_provider  # noqa: E402
 from _lib.runner import default_chain  # noqa: E402
 
 
@@ -42,10 +43,12 @@ def _check_writable(directory: Path) -> bool:
 
 def _build_report() -> dict[str, Any]:
     chain = _chain_from_env() or default_chain()
+    shadow = _shadow_from_env()
 
     findings: list[str] = []
     ok: list[str] = []
     missing: list[str] = []
+    probe_results: list[ProbeResult] = []
 
     py = sys.executable or shutil.which("python3")
     if py:
@@ -71,6 +74,49 @@ def _build_report() -> dict[str, Any]:
             "CLAUDE_PLAN_REVIEW_FAIL_OPEN=1 to bypass."
         )
 
+    # Auth + model-access probes for every available chain provider AND every
+    # shadow provider. Probes are TTL-cached (24h) and invalidated by
+    # credential mtime changes — running here on every SessionStart is cheap
+    # when warm, and re-validates auth before the user hits ExitPlanMode.
+    probe_targets: list[str] = list(available_providers)
+    for prov in shadow:
+        if prov not in probe_targets and (
+            prov == "local" or shutil.which(PROVIDER_CMDS.get(prov, [prov])[0])
+        ):
+            probe_targets.append(prov)
+
+    chain_probe_failures: list[str] = []
+    for prov in probe_targets:
+        result = probe_provider(prov)
+        probe_results.append(result)
+        cache_marker = " [cached]" if result.cached else ""
+        is_chain = prov in available_providers
+        scope_marker = "" if is_chain else " (shadow)"
+        if result.ok:
+            ok.append(
+                f"{prov}{scope_marker} model {result.model!r} reachable{cache_marker}",
+            )
+        else:
+            msg = (
+                f"{prov}{scope_marker} model {result.model!r} probe "
+                f"failed{cache_marker}: {result.detail[:200]}"
+            )
+            missing.append(msg)
+            if is_chain:
+                chain_probe_failures.append(msg)
+
+    # Block only when EVERY chain provider's probe failed — a single working
+    # chain link is enough; the chain falls through naturally on bad probes.
+    healthy_chain = [r for r in probe_results if r.ok and r.name in available_providers]
+    if available_providers and not healthy_chain:
+        findings.append(
+            "every chain provider failed its model-access probe — the chain "
+            "would error at ExitPlanMode. Fix auth/model access or narrow "
+            "CLAUDE_PLAN_REVIEW_CHAIN to a working provider, or set "
+            "CLAUDE_PLAN_REVIEW_FAIL_OPEN=1 to bypass.\n"
+            "    failures: " + " | ".join(chain_probe_failures),
+        )
+
     data_root = paths.data_dir()
     if _check_writable(data_root):
         ok.append(f"writable {data_root}")
@@ -80,21 +126,36 @@ def _build_report() -> dict[str, Any]:
     return {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "chain": chain,
+        "shadow": shadow,
         "ok": ok,
         "missing": missing,
         "findings": findings,
+        "probes": [r.to_dict() for r in probe_results],
         "healthy": not findings,
     }
 
 
 def _report_signature(report: dict[str, Any]) -> str:
     """Hash the materially-relevant fields so unchanged reports don't re-emit."""
+    # Probe outcomes (ok per provider + cred signature) are part of the
+    # signature so a flipped auth state forces a fresh SessionStart context.
+    probe_summary = [
+        {
+            "name": p["name"],
+            "ok": p["ok"],
+            "model": p.get("model", ""),
+            "cred": p.get("cred_signature", ""),
+        }
+        for p in report.get("probes", [])
+    ]
     sig_input = json.dumps(
         {
             "chain": report["chain"],
+            "shadow": report.get("shadow", []),
             "ok": report["ok"],
             "missing": report.get("missing", []),
             "findings": report["findings"],
+            "probes": probe_summary,
         },
         sort_keys=True,
     )
@@ -104,21 +165,24 @@ def _report_signature(report: dict[str, Any]) -> str:
 def _format_context(report: dict[str, Any]) -> str:
     lines = ["plan-review-loop preflight:"]
     lines.append(f"  chain: {' -> '.join(report['chain'])}")
+    shadow = report.get("shadow") or []
+    if shadow:
+        lines.append(f"  shadow: {', '.join(shadow)}")
     if report["ok"]:
-        lines.append("  available:")
+        lines.append("  ok:")
         for line in report["ok"]:
             lines.append(f"    - {line}")
     if report.get("missing"):
-        lines.append("  not on PATH (informational; chain falls through):")
+        lines.append("  degraded (informational; chain falls through):")
         for line in report["missing"]:
             lines.append(f"    - {line}")
     if report["findings"]:
-        lines.append("  issues:")
+        lines.append("  blocking issues:")
         for line in report["findings"]:
             lines.append(f"    - {line}")
         lines.append(
             "  ExitPlanMode will be denied until these are resolved, unless "
-            "CLAUDE_PLAN_REVIEW_FAIL_OPEN=1 is set."
+            "CLAUDE_PLAN_REVIEW_FAIL_OPEN=1 is set.",
         )
     return "\n".join(lines)
 

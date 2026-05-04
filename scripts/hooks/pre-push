@@ -1,0 +1,23 @@
+#!/bin/sh
+# Run every CI gate locally before push. CI parity is the contract:
+# anything that would fail in CI must fail here first. Skips with
+# explicit env override:
+#
+#   SKIP_PREPUSH=1 git push ...
+#
+# (Use only for emergency hotfixes; default is mandatory.)
+#
+# This hook is shipped under scripts/hooks/ and activated by
+# `git config core.hooksPath scripts/hooks` so it lives in the tracked
+# tree, not per-clone .git/hooks/. New clones run scripts/install-hooks.sh
+# to opt in.
+
+set -eu
+
+if [ "${SKIP_PREPUSH:-0}" = "1" ]; then
+    echo "pre-push: SKIP_PREPUSH=1 — skipping local CI parity checks"
+    exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+exec "$repo_root/scripts/check.sh"

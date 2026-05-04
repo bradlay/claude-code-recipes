@@ -22,6 +22,25 @@ Plugins I use day-to-day. Public so others can pull what's useful.
 | [`branch-warn`](./plugins/branch-warn/) | Emits "on branch X" once per hour on UserPromptSubmit. Quiet on feature branches, louder on `main`/`master`. |
 | [`stop-session-check`](./plugins/stop-session-check/) | Stop hook that blocks session-end when there are uncommitted changes or unpushed commits. Surfaces a repo-type-aware completion checklist. |
 
+## Development
+
+After cloning, activate the tracked git hooks so every push runs the
+same gates CI does:
+
+```sh
+./scripts/install-hooks.sh
+```
+
+This sets `core.hooksPath` to `scripts/hooks/`. The pre-push hook
+invokes `scripts/check.sh`, which mirrors `.github/workflows/ci.yml`
+exactly — ruff, mypy, pytest, manifest validation, namespace gate,
+hook-quoting gate, executable-bit gate, shellcheck, and `claude
+plugin validate`. Bypass for emergency hotfixes only:
+
+```sh
+SKIP_PREPUSH=1 git push ...
+```
+
 ## License
 
 MIT.
