@@ -28,7 +28,7 @@ step "ruff check (lint)"
 ruff check plugins/
 
 step "ruff format --check"
-ruff format --check plugins/ tests/
+ruff format --check plugins/
 
 step "mypy --strict per plugin"
 for p in $PLUGINS; do

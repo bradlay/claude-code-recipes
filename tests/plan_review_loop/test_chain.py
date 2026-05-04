@@ -92,11 +92,17 @@ class TestProviderRegistry:
     def test_default_chain_includes_fallbacks(self) -> None:
         assert chain.DEFAULT_CHAINS["plan"] == ["codex", "gemini", "claude"]
 
-    def test_local_provider_dropped(self) -> None:
-        # `local` provider was the gb10-specific runner; it must not ship
-        # in the public plugin.
-        assert "local" not in chain.PROVIDER_CMDS
+    def test_local_provider_registered_but_not_default(self) -> None:
+        # `local` is a generic OpenAI-compat client (vLLM/Ollama/llama.cpp);
+        # it ships registered so users can opt in via CLAUDE_PLAN_REVIEW_CHAIN
+        # or CLAUDE_PLAN_REVIEW_SHADOW, but is NOT in the default chain so
+        # users without a local backend are unaffected.
+        assert "local" in chain.PROVIDER_CMDS
         assert "local" not in chain.DEFAULT_CHAINS["plan"]
+        # Local provider invokes the in-tree runner via the current python.
+        local_cmd = chain.PROVIDER_CMDS["local"]
+        assert local_cmd[0].endswith("python") or "python" in local_cmd[0]
+        assert local_cmd[-1].endswith("local_provider.py")
 
     def test_codex_uses_xhigh_reasoning(self) -> None:
         codex_cmd = chain.PROVIDER_CMDS["codex"]
