@@ -30,7 +30,7 @@ from _lib.runner import (  # noqa: E402
 )
 
 
-def F(severity: str, title: str, fid: str | None = None) -> dict:
+def F(severity: str, title: str, fid: str | None = None) -> dict[str, str]:
     """Helper: build a finding with a stable fingerprint."""
     f = {"severity": severity, "title": title}
     if fid:

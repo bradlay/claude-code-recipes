@@ -184,7 +184,7 @@ def main() -> int:
         # detection saw drift (or safety cap fired) and exited
         # advisory. Surface findings and the runner's explanation.
         _write_health("max_iterations_reached", provider=outcome.provider)
-        parts: list[str] = []
+        parts = []
         if outcome.findings:
             parts.append(_format_findings(outcome.findings, outcome.provider))
         if outcome.error:
