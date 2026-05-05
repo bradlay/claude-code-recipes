@@ -159,6 +159,46 @@ def main() -> int:
             parts.append(_format_questions(outcome.questions, outcome.provider))
         return _io.emit_pretooluse_allow(additional_context="\n\n".join(parts))
 
+    if outcome.status == "max_iterations_with_unresolved_p0":
+        # Loop terminated with unresolved P0 — either reviewer
+        # diverged (still raising mostly-new issues) or the safety
+        # cap fired. Block with the runner's explanation; operator
+        # can override with CLAUDE_PLAN_REVIEW_FAIL_OPEN=1.
+        _write_health("max_iterations_with_unresolved_p0", provider=outcome.provider)
+        parts = [_format_findings(outcome.findings, outcome.provider)]
+        if outcome.error:
+            parts.append(f"BLOCKED: {outcome.error}")
+        else:
+            parts.append(
+                f"BLOCKED: review loop terminated after {outcome.iteration} "
+                f"rounds with unresolved P0. Address the P0(s) or set "
+                f"CLAUDE_PLAN_REVIEW_FAIL_OPEN=1 to override.",
+            )
+        return _io.emit_pretooluse_deny(
+            reason=f"plan-review terminated with unresolved P0 ({outcome.iteration} rounds)",
+            additional_context="\n\n".join(parts),
+        )
+
+    if outcome.status == "max_iterations_reached":
+        # Loop terminated with no P0 outstanding — convergence
+        # detection saw drift (or safety cap fired) and exited
+        # advisory. Surface findings and the runner's explanation.
+        _write_health("max_iterations_reached", provider=outcome.provider)
+        parts: list[str] = []
+        if outcome.findings:
+            parts.append(_format_findings(outcome.findings, outcome.provider))
+        if outcome.error:
+            parts.append(outcome.error)
+        else:
+            parts.append(
+                f"Review loop exited after {outcome.iteration} rounds. "
+                f"No P0 outstanding so the plan can proceed; remaining "
+                f"findings above are advisory.",
+            )
+        if outcome.questions:
+            parts.append(_format_questions(outcome.questions, outcome.provider))
+        return _io.emit_pretooluse_allow(additional_context="\n\n".join(parts))
+
     if outcome.status == "clean":
         _write_health("clean", provider=outcome.provider)
         msg = f"Plan review ({outcome.provider}): no issues found."
