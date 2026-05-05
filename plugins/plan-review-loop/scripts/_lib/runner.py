@@ -23,6 +23,7 @@ import re
 import tempfile
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -119,8 +120,6 @@ def _history_path(plan_path: Path) -> Path:
 
 def _utc_now_iso() -> str:
     """Single timestamp format used in history records."""
-    from datetime import datetime, timezone
-
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -213,8 +212,8 @@ def _assess_progress(
     * ``"first_iteration"`` — iteration 1, nothing to compare against.
 
     The overlap ratio is the Jaccard similarity of the finding-ID
-    sets (current ∩ previous) / (current ∪ previous). 0.5 means half
-    the current findings are continuations of prior ones.
+    sets: |current AND previous| / |current OR previous|. 0.5 means
+    half the current findings are continuations of prior ones.
     """
     if not current_findings:
         return "clean", 1.0, 0
