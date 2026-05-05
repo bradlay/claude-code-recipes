@@ -11,6 +11,7 @@ exercise the boundary between "converging", "drift_warning",
 "diverging", and the safety cap so the loop can't regress into a
 runaway again.
 """
+
 from __future__ import annotations
 
 import sys

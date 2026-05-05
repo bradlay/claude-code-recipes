@@ -598,7 +598,10 @@ def review_plan(
         )
 
         result: ChainResult = run_chain(
-            prompt, chain=chain, mode="plan", metadata=metadata,
+            prompt,
+            chain=chain,
+            mode="plan",
+            metadata=metadata,
         )
 
         if not result.provider:
