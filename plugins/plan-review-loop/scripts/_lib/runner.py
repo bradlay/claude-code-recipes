@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from . import paths
-from .chain import DEFAULT_CHAINS, ChainResult, run_chain
+from .chain import ChainResult, run_chain
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +93,15 @@ def _path_lock_key(plan_path: Path) -> str:
 
 
 def _state_key(plan_path: Path, content_hash: str) -> str:
-    """State key includes content hash so edits invalidate iteration history."""
-    return f"{_path_lock_key(plan_path)}_{content_hash[:12]}"
+    """Path-only state key. Iteration history must accumulate across
+    plan rewrites — including the content hash made every Write
+    create a fresh state file with iteration=0 so the safety cap
+    never fired on actively-iterating plans. The content_hash
+    parameter is retained for signature compatibility with callers
+    that already compute it; it is unused.
+    """
+    del content_hash
+    return _path_lock_key(plan_path)
 
 
 def _state_path(plan_path: Path, content_hash: str) -> Path:
@@ -306,10 +313,21 @@ def _prune_state_dir() -> None:
 
 
 def _clean_state_for_plan(plan_path: Path) -> None:
-    """On clean review, sweep all state files for this plan path."""
-    prefix = f"_state_{_path_lock_key(plan_path)}_"
+    """On clean review, sweep state files for this plan path.
+
+    Removes BOTH:
+      * the new path-only `_state_<key>.json` (single file)
+      * any legacy `_state_<key>_<hash>.json` left over from when the
+        state filename rotated per content hash. Legacy files exist
+        only on installs that ran an older version; new code never
+        writes them.
+    """
+    state_dir = paths.review_state_dir()
+    key = _path_lock_key(plan_path)
     with contextlib.suppress(OSError):
-        for path in paths.review_state_dir().glob(f"{prefix}*.json"):
+        (state_dir / f"_state_{key}.json").unlink(missing_ok=True)
+    with contextlib.suppress(OSError):
+        for path in state_dir.glob(f"_state_{key}_*.json"):
             with contextlib.suppress(OSError):
                 path.unlink()
 
@@ -817,7 +835,3 @@ def review_plan(
         )
     finally:
         lock.release()
-
-
-def default_chain() -> list[str]:
-    return list(DEFAULT_CHAINS["plan"])

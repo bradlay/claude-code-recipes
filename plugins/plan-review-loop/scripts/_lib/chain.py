@@ -316,6 +316,12 @@ DEFAULT_CHAINS: dict[str, list[str]] = {
     "plan": ["codex", "gemini", "claude"],
 }
 
+# Tier presets selectable via CLAUDE_PLAN_REVIEW_TIER. `strict` is the
+# default and tracks DEFAULT_CHAINS["plan"]; `fast` skips codex/gemini
+# so routine plans don't pay the gpt-5.4 xhigh cost. Explicit
+# CLAUDE_PLAN_REVIEW_CHAIN always wins; tier is the fallback.
+_FAST_CHAIN: list[str] = ["claude"]
+
 PROVIDER_TIMEOUTS: dict[str, int] = {
     "codex": 900,
     "gemini": 180,
@@ -341,6 +347,30 @@ def _chain_from_env() -> list[str] | None:
             list(PROVIDER_CMDS),
         )
     return valid or None
+
+
+def _tier_from_env() -> list[str]:
+    """Return the chain selected by CLAUDE_PLAN_REVIEW_TIER. Unknown
+    tier values fall back to strict so a typo never silently
+    downgrades to the cheap chain."""
+    tier = os.environ.get("CLAUDE_PLAN_REVIEW_TIER", "").strip().lower()
+    if tier == "fast":
+        return list(_FAST_CHAIN)
+    return list(DEFAULT_CHAINS["plan"])
+
+
+def resolve_chain(mode: str = "plan") -> list[str]:
+    """Select the provider chain. CLAUDE_PLAN_REVIEW_CHAIN wins when it
+    parses to at least one valid provider. Otherwise CLAUDE_PLAN_REVIEW_TIER
+    selects strict (default) or fast. Unknown tier values fall back to
+    strict; an entirely-invalid CLAUDE_PLAN_REVIEW_CHAIN also falls
+    through to the tier path so we never return an unusable list.
+    `mode` is reserved for parity with DEFAULT_CHAINS but currently
+    only `plan` is wired."""
+    explicit = _chain_from_env()
+    if explicit:
+        return explicit
+    return _tier_from_env()
 
 
 def _shadow_from_env() -> list[str]:
@@ -498,7 +528,7 @@ def run_chain(
     metadata: dict[str, Any] | None = None,
 ) -> ChainResult:
     if chain is None:
-        chain = _chain_from_env() or DEFAULT_CHAINS.get(mode, DEFAULT_CHAINS["plan"])
+        chain = resolve_chain(mode)
 
     meta: dict[str, Any] = dict(metadata) if metadata else {}
     plan_name = meta.get("plan_filename", "").replace(".md", "") or "unknown"

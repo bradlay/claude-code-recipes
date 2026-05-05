@@ -45,10 +45,14 @@ class TestKeying:
         new_key = runner._path_lock_key(plan_file)
         assert original_key == new_key, "lock key must depend on path only"
 
-    def test_state_key_changes_with_content(self, plan_file: Path) -> None:
+    def test_state_key_is_path_only(self, plan_file: Path) -> None:
         sk1 = runner._state_key(plan_file, "hash_one")
         sk2 = runner._state_key(plan_file, "hash_two")
-        assert sk1 != sk2, "state key must include content hash"
+        assert sk1 == sk2, (
+            "state key must be path-only so the iteration cap accumulates "
+            "across plan rewrites"
+        )
+        assert sk1 == runner._path_lock_key(plan_file)
 
     def test_lock_path_in_state_dir(self, plan_file: Path, tmp_data: Path) -> None:
         lp = runner._lock_path(plan_file)
@@ -171,21 +175,58 @@ class TestStateLifecycle:
         assert reloaded["iteration"] == 3
         assert reloaded["last_review_status"] == "blocking"
 
-    def test_clean_state_for_plan_removes_all_content_hashes(
+    def test_clean_state_removes_path_only_file(
         self, plan_file: Path, tmp_data: Path
     ) -> None:
         runner._save_state(plan_file, "hash_a", {"iteration": 1})
+        # The three saves all collapse onto the same path-only file now.
         runner._save_state(plan_file, "hash_b", {"iteration": 2})
         runner._save_state(plan_file, "hash_c", {"iteration": 3})
 
-        # All three exist
-        prefix = f"_state_{runner._path_lock_key(plan_file)}_"
-        before = list(paths.review_state_dir().glob(f"{prefix}*.json"))
-        assert len(before) == 3
+        key = runner._path_lock_key(plan_file)
+        target = paths.review_state_dir() / f"_state_{key}.json"
+        assert target.exists()
 
         runner._clean_state_for_plan(plan_file)
-        after = list(paths.review_state_dir().glob(f"{prefix}*.json"))
-        assert after == [], "clean must remove every content-hash variant"
+        assert not target.exists(), "clean must remove the path-only state file"
+
+    def test_clean_state_removes_legacy_hash_files(
+        self, plan_file: Path, tmp_data: Path
+    ) -> None:
+        """Installs that ran a previous version may have leftover
+        `_state_<key>_<hash>.json` files; the cleanup must remove
+        those alongside the new path-only file."""
+        state_dir = paths.review_state_dir()
+        state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        key = runner._path_lock_key(plan_file)
+
+        legacy_a = state_dir / f"_state_{key}_aaaaaaaaaaaa.json"
+        legacy_b = state_dir / f"_state_{key}_bbbbbbbbbbbb.json"
+        new_path_only = state_dir / f"_state_{key}.json"
+        legacy_a.write_text('{"iteration": 1}')
+        legacy_b.write_text('{"iteration": 2}')
+        new_path_only.write_text('{"iteration": 3}')
+
+        runner._clean_state_for_plan(plan_file)
+
+        assert not legacy_a.exists(), "legacy hash-suffixed file must be removed"
+        assert not legacy_b.exists(), "legacy hash-suffixed file must be removed"
+        assert not new_path_only.exists(), "new path-only file must be removed"
+
+    def test_iteration_accumulates_across_rewrites(
+        self, plan_file: Path, tmp_data: Path
+    ) -> None:
+        """The whole point of the path-only key: iteration counter
+        survives content rewrites. Two saves with different hashes
+        land on the same file, and the second value wins."""
+        runner._save_state(plan_file, "hash_v1", {"iteration": 1})
+        runner._save_state(plan_file, "hash_v2", {"iteration": 2})
+        # Reload via either hash should now return the same record
+        # (the file is path-only).
+        loaded_v1 = runner._load_state(plan_file, "hash_v1")
+        loaded_v2 = runner._load_state(plan_file, "hash_v2")
+        assert loaded_v1["iteration"] == 2
+        assert loaded_v2["iteration"] == 2
 
     def test_state_file_mode_is_0600(self, plan_file: Path, tmp_data: Path) -> None:
         runner._save_state(plan_file, "abc123", {"iteration": 1})
@@ -202,3 +243,54 @@ class TestReviewPlanShortCircuits:
         assert outcome.status == "plan_too_short"
         # Lock file should not exist; runner short-circuits before locking
         assert not runner._lock_path(plan).exists()
+
+
+class TestReviewPlanIterationCap:
+    """End-to-end through the public runner path: state must accumulate
+    across rewrites, and the safety cap must actually fire."""
+
+    def test_iteration_cap_fires_after_rewrites(
+        self, tmp_path: Path, tmp_data: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from _lib import chain as chain_mod
+
+        plan = tmp_path / "plan.md"
+
+        def fake_run_chain(prompt: str, **kwargs: Any) -> chain_mod.ChainResult:
+            return chain_mod.ChainResult(
+                provider="claude",
+                findings=[
+                    {
+                        "severity": "P0",
+                        "title": "Always-blocking finding",
+                        "description": "Stub provider always blocks.",
+                        "id": "stub-fixture-id",
+                    },
+                ],
+                questions=[],
+                raw_output='{"findings": []}',
+                elapsed_seconds=0.0,
+                attempts=[],
+            )
+
+        monkeypatch.setattr(runner, "run_chain", fake_run_chain)
+        monkeypatch.setenv("CLAUDE_PLAN_REVIEW_MAX_ITERATIONS", "3")
+
+        statuses: list[str] = []
+        for i in range(3):
+            plan.write_text(
+                f"# Plan rewrite {i} " + ("padding " * 20),
+            )
+            outcome = runner.review_plan(plan)
+            statuses.append(outcome.status)
+
+        # First two reviews block on the P0; the third call lands on
+        # iteration == max and fires the cap. Without the path-only
+        # state key, every rewrite would reset to iteration=1 and the
+        # cap would never trigger — that's the regression we're
+        # locking in.
+        assert statuses[:2] == ["blocking", "blocking"], statuses
+        assert statuses[2] == "max_iterations_with_unresolved_p0", statuses
+
+        history = runner._load_history(plan)
+        assert history["completed_iterations"] == 3
