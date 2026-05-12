@@ -33,7 +33,6 @@ logger = logging.getLogger(__name__)
 
 _SECURE_FILE_MODE = 0o600
 _STATE_RETAIN = 50
-_LOCK_BUSY_RC = 3
 
 
 @dataclass
