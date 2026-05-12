@@ -132,13 +132,15 @@ class TestGitProbes:
 
 
 class TestBuildChecklist:
-    def test_dirty_repo_has_blocking(self, tmp_path: Path) -> None:
+    def test_dirty_repo_has_nudge_not_block(self, tmp_path: Path) -> None:
         _git_init(tmp_path)
         (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
         (tmp_path / "uncommitted.txt").write_text("x")
         data = checklist.build_checklist(tmp_path.name, tmp_path)
         statuses = [i["status"] for i in data["items"]]
-        assert "todo" in statuses
+        # `nudge` is advisory; the hook entry point never blocks on it.
+        assert "nudge" in statuses
+        assert "todo" not in statuses
 
     def test_clean_repo_no_blocking_for_committed(self, tmp_path: Path) -> None:
         _git_init(tmp_path)
@@ -154,17 +156,20 @@ class TestBuildChecklist:
 
 
 class TestFormatChecklist:
-    def test_blocking_header(self) -> None:
+    def test_advisory_header_for_outstanding_items(self) -> None:
         data = {
             "repo_name": "r",
             "repo_type": "python",
             "branch": "main",
-            "items": [{"status": "todo", "text": "fix this"}],
+            "items": [{"status": "nudge", "text": "fix this"}],
             "actions": ["do that"],
         }
         msg = checklist.format_checklist(data)
-        assert "STOP" in msg
-        assert "REQUIRED before stopping" in msg
+        # Advisory framing only — no blocking language.
+        assert "STOP" not in msg
+        assert "REQUIRED" not in msg
+        assert "session-end" in msg
+        assert "Suggested next steps" in msg
         assert "do that" in msg
 
     def test_non_blocking_header(self) -> None:
