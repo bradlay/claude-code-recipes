@@ -136,8 +136,11 @@ def has_recent_local_plan(repo_path: Path) -> dict[str, str] | None:
 
 def build_checklist(repo_name: str, repo_path: Path) -> dict[str, Any]:
     """Build the checklist data dict. Items have a status of `done`,
-    `todo`, `info`, or `unknown`. The hook treats `todo` items as
-    blocking."""
+    `nudge`, `info`, or `unknown`.
+
+    The hook never blocks on these — repo state is shared across every
+    Claude session in the working tree, so a `nudge` ("3 commits ahead
+    of remote") may belong to *another* session. Items are advisory."""
     repo_type = detect_repo_type(repo_path)
     deploy_hint = detect_deploy_hint(repo_type)
     test_hint = detect_test_hint(repo_path, repo_type)
@@ -154,24 +157,33 @@ def build_checklist(repo_name: str, repo_path: Path) -> dict[str, Any]:
     else:
         items.append(
             {
-                "status": "todo",
-                "text": f"{uncommitted} uncommitted change(s); commit first",
+                "status": "nudge",
+                "text": (
+                    f"{uncommitted} uncommitted file(s) in the working tree "
+                    "(could be yours or another session's)"
+                ),
             }
         )
-        actions.append("Commit outstanding changes")
+        actions.append("If any of your work is uncommitted, commit it before stopping")
 
     # 2. Pushed?
     branch, ahead, reason = push_status(repo_path)
     if branch is None:
         items.append({"status": "unknown", "text": "Could not check push status"})
     elif reason:
-        items.append({"status": "todo", "text": f"Branch `{branch}` not pushed ({reason})"})
-        actions.append(f"Push branch `{branch}` to remote")
+        items.append({"status": "nudge", "text": f"Branch `{branch}` not pushed ({reason})"})
+        actions.append(f"Push branch `{branch}` when you're ready")
     elif ahead and ahead > 0:
         items.append(
-            {"status": "todo", "text": f"Branch `{branch}` is {ahead} commit(s) ahead of remote"}
+            {
+                "status": "nudge",
+                "text": (
+                    f"Branch `{branch}` is {ahead} commit(s) ahead of remote "
+                    "(may include other sessions' commits)"
+                ),
+            }
         )
-        actions.append(f"Push branch `{branch}` to remote")
+        actions.append(f"Push branch `{branch}` when you're ready")
     else:
         items.append({"status": "done", "text": f"Branch `{branch}` is up to date with remote"})
 
@@ -184,20 +196,7 @@ def build_checklist(repo_name: str, repo_path: Path) -> dict[str, Any]:
         items.append({"status": "info", "text": f"Run tests? (`{test_hint}`)"})
         actions.append(f"Run tests: {test_hint}")
 
-    # 5. Commit-frequency hint when uncommitted is large
-    if uncommitted and uncommitted > 5:
-        items.append(
-            {
-                "status": "todo",
-                "text": (
-                    f"{uncommitted} uncommitted files; commit frequently to get "
-                    "pre-commit checks on smaller changesets"
-                ),
-            }
-        )
-        actions.append("Break changes into logical commits")
-
-    # 6. Recent local plan files (info only)
+    # 5. Recent local plan files (info only)
     recent_plan = has_recent_local_plan(repo_path)
     if recent_plan:
         items.append(recent_plan)
@@ -212,7 +211,7 @@ def build_checklist(repo_name: str, repo_path: Path) -> dict[str, Any]:
 
 
 def format_checklist(data: dict[str, Any]) -> str:
-    """Render checklist data as a human-readable message."""
+    """Render checklist data as a human-readable advisory message."""
     items = data["items"]
     actions = data["actions"]
 
@@ -222,20 +221,8 @@ def format_checklist(data: dict[str, Any]) -> str:
         lines.append(f"{marker} {item['text']}")
     checklist = "\n".join(lines)
 
-    blocking = [i for i in items if i["status"] == "todo"]
-
-    if blocking:
-        header = (
-            f"STOP - {len(blocking)} blocking item(s) before ending session.\n"
-            f"Completion checklist for `{data['repo_name']}` ({data['repo_type']}):"
-        )
-    else:
-        header = (
-            f"[session-end] Completion checklist for `{data['repo_name']}` ({data['repo_type']}):"
-        )
-
+    header = f"[session-end] Completion checklist for `{data['repo_name']}` ({data['repo_type']}):"
     message = f"{header}\n{checklist}\n"
     if actions:
-        label = "REQUIRED before stopping" if blocking else "Suggested next steps"
-        message += f"\n{label}:\n" + "\n".join(f"  - {a}" for a in actions)
+        message += "\nSuggested next steps:\n" + "\n".join(f"  - {a}" for a in actions)
     return message
