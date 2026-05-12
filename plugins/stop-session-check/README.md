@@ -1,10 +1,19 @@
 # stop-session-check
 
-A Stop hook that runs at session end and surfaces a completion
-checklist: uncommitted changes, branch ahead of remote, recent plan
-files, plus repo-type-specific test/deploy hints. **Blocks** the stop
-when there are uncommitted changes or unpushed commits so you don't
-walk away from half-staged work.
+A Stop hook that runs at session end and surfaces an **advisory**
+completion checklist: uncommitted changes, branch ahead of remote,
+recent plan files, plus repo-type-specific test/deploy hints. It
+nudges you to commit/push your in-flight work but never blocks the
+session from ending.
+
+## Why advisory, not blocking
+
+`git status` and ahead-of-remote counts are properties of the working
+tree, not of any one Claude session. When you run two Claude sessions
+against the same repo, session B sees session A's dirty files and
+unpushed commits — so blocking on those would trap B behind work it
+did not author. This hook prints the checklist as a nudge for *your*
+work and lets the session stop.
 
 ## What it does
 
@@ -15,20 +24,17 @@ When the session is about to end:
    (package.json), Cloudflare Worker (wrangler.toml).
 3. Builds a checklist of items, each with a status:
    - **`done`** — already taken care of (e.g. all changes committed).
-   - **`todo`** — blocking; the session won't stop until resolved.
+   - **`nudge`** — advisory; could be your work or another session's.
+     Surfaced in the checklist, never blocks.
    - **`info`** — informational hint (e.g. "consider running tests").
-4. If any items are `todo`, emits a `decision: block` envelope with the
-   full checklist as the reason. The host CLI surfaces this; the model
-   can address it (commit, push) and re-attempt the stop.
-5. If there are no `todo` items, emits a pass-through `{}` and the
-   session stops normally.
+4. Always emits a pass-through that allows the stop, attaching the
+   checklist as a message if there's anything non-`done` to surface.
 
 ## Recursive-stop bypass
 
-When the host CLI re-invokes the stop hook (after the model addressed a
-prior block), the payload sets `stop_hook_active: true`. The hook
-detects this and lets the stop go unconditionally so you're never
-trapped behind a recursive block.
+When the host CLI re-invokes the stop hook, the payload sets
+`stop_hook_active: true`. The hook detects this and lets the stop go
+through with no message, so re-entries are quiet.
 
 ## Platform
 
@@ -52,21 +58,20 @@ macOS and Linux. Hook entry point is a POSIX shell launcher.
 
 | Item | Status if... |
 |---|---|
-| Uncommitted changes | `done` if 0; `todo` otherwise |
-| Branch ahead of remote | `done` if 0 ahead; `todo` if N ahead or no upstream |
+| Uncommitted changes | `done` if 0; `nudge` otherwise |
+| Branch ahead of remote | `done` if 0 ahead; `nudge` if N ahead or no upstream |
 | Test hint (pytest, pnpm test, pnpm playwright test) | `info` if matching markers exist |
 | Deploy hint (wrangler deploy) | `info` if Cloudflare Worker detected |
 | Recent local plan file | `info` if `<repo>/.claude/plans/*.md` modified in last 30 min |
-| Many uncommitted (>5) | `todo` — nudges toward smaller commits |
 
-`done` and `info` are non-blocking. `todo` blocks the stop.
+All statuses are non-blocking; the hook always allows the stop.
 
 ## Failure mode
 
 - Any error inside the hook returns `{}` (allow stop). The user is
   never wedged.
 - Recursive invocation (`stop_hook_active: true`) always allows the
-  stop.
+  stop quietly.
 - Not in a git repo: `{}` (allow stop).
 
 ## Disable / uninstall
