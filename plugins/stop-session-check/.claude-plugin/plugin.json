@@ -1,7 +1,7 @@
 {
   "name": "stop-session-check",
-  "version": "0.1.0",
-  "description": "Stop hook that surfaces a session-end completion checklist: uncommitted changes, branch ahead of remote, recent plan files. Detects repo type (Python, Node, Cloudflare Worker) and adds matching test-run hints. Blocks session-end when there are uncommitted changes or unpushed commits.",
+  "version": "0.2.0",
+  "description": "Stop hook that surfaces an advisory session-end completion checklist: uncommitted changes, branch ahead of remote, recent plan files. Detects repo type (Python, Node, Cloudflare Worker) and adds matching test-run hints. Never blocks the stop — repo state is shared across parallel sessions, so the checklist nudges you to commit/push your own work without trapping concurrent sessions.",
   "author": {
     "name": "bradlay"
   },
