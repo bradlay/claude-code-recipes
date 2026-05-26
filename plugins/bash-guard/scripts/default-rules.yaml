@@ -31,6 +31,14 @@ settings:
   # Branches treated as protected (rules with "{protected_branches}"
   # in the pattern get expanded with this list).
   protected_branches: [main, master]
+  # Categories whose rules are SKIPPED when the sub-command's effective
+  # target dir looks like a deploy worktree (``repos/<name>`` where
+  # ``<name>`` does NOT end in ``-dev``). The sddcinfo convention is
+  # ``repos/<name>`` = the branch-``main`` deploy copy that legitimately
+  # runs ``git checkout main``/``pull``/``ff-merge`` against ``main``.
+  # Destructive ops live in different categories (filesystem,
+  # git-destructive, git-history) and continue to fire everywhere.
+  exempt_categories_for_deploy_worktree: ["git-protected"]
 
 rules:
 
