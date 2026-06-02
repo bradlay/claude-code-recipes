@@ -167,7 +167,7 @@ def _load_trusted_projects() -> frozenset[Path]:
     except OSError:
         mtime = 0.0
 
-    cached: frozenset[Path] | None = _TRUST_CACHE.get("set")  # type: ignore[assignment]
+    cached: frozenset[Path] | None = _TRUST_CACHE.get("set")
     if (
         cached is not None
         and _TRUST_CACHE.get("path") == path
@@ -290,7 +290,11 @@ def resolve_config_for(
         return base_config
 
     base_rules = list(base_config.get("rules") or [])
-    existing_ids = {r.get("id") for r in base_rules if isinstance(r, dict) and r.get("id")}
+    existing_ids: set[str] = {
+        rid
+        for r in base_rules
+        if isinstance(r, dict) and isinstance(rid := r.get("id"), str) and rid
+    }
     appended: list[dict[str, Any]] = []
     for pf in project_files:
         doc = _read_yaml(pf)

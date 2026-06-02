@@ -17,12 +17,18 @@ Coverage focuses on:
 from __future__ import annotations
 
 import json
+import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from textwrap import dedent
 
 import pytest
 
 from _lib import guard, identity
+
+# Setter returned by the `fake_gh` fixture: pass a login (or None) to make
+# every identity probe in the test resolve to it.
+_FakeGh = Callable[[str | None], None]
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +45,7 @@ def _reset_caches(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 @pytest.fixture
-def fake_gh(monkeypatch: pytest.MonkeyPatch):
+def fake_gh(monkeypatch: pytest.MonkeyPatch) -> _FakeGh:
     """Replace ``_identity_for_token`` with a controllable stub so we
     don't actually shell out to ``gh api /user``. The fixture returns
     a setter; tests call ``fake_gh("sddcinfo")`` to make every probe
@@ -68,7 +74,7 @@ _BINDINGS = {"sddcinfo": ["sddcinfo"], "bradlay": ["bradlay"]}
 
 class TestFeatureGate:
     def test_empty_bindings_disables_feature(
-        self, monkeypatch: pytest.MonkeyPatch, fake_gh
+        self, monkeypatch: pytest.MonkeyPatch, fake_gh: _FakeGh
     ) -> None:
         monkeypatch.setenv("GH_TOKEN", "ghp_fake")
         fake_gh("sddcinfo")
@@ -80,7 +86,9 @@ class TestFeatureGate:
         )
         assert result is None
 
-    def test_none_bindings_disables_feature(self, monkeypatch: pytest.MonkeyPatch, fake_gh) -> None:
+    def test_none_bindings_disables_feature(
+        self, monkeypatch: pytest.MonkeyPatch, fake_gh: _FakeGh
+    ) -> None:
         monkeypatch.setenv("GH_TOKEN", "ghp_fake")
         fake_gh("sddcinfo")
         result = identity.check_identity(
@@ -97,7 +105,9 @@ class TestFeatureGate:
 
 
 class TestBinding:
-    def test_cross_owner_push_denies(self, monkeypatch: pytest.MonkeyPatch, fake_gh) -> None:
+    def test_cross_owner_push_denies(
+        self, monkeypatch: pytest.MonkeyPatch, fake_gh: _FakeGh
+    ) -> None:
         monkeypatch.setenv("GH_TOKEN", "ghp_sddcinfo_pat")
         fake_gh("sddcinfo")
         reason = identity.check_identity(
@@ -110,7 +120,9 @@ class TestBinding:
         assert "'sddcinfo'" in reason
         assert "bradlay" in reason
 
-    def test_same_owner_push_allows(self, monkeypatch: pytest.MonkeyPatch, fake_gh) -> None:
+    def test_same_owner_push_allows(
+        self, monkeypatch: pytest.MonkeyPatch, fake_gh: _FakeGh
+    ) -> None:
         monkeypatch.setenv("GH_TOKEN", "ghp_sddcinfo_pat")
         fake_gh("sddcinfo")
         reason = identity.check_identity(
@@ -121,7 +133,7 @@ class TestBinding:
         assert reason is None
 
     def test_gh_secret_set_cross_owner_denies(
-        self, monkeypatch: pytest.MonkeyPatch, fake_gh
+        self, monkeypatch: pytest.MonkeyPatch, fake_gh: _FakeGh
     ) -> None:
         """Owner resolution path covered today: ``--repo`` flag.
         Positional ``<owner>/<repo>`` after ``gh repo create`` is not
@@ -145,7 +157,7 @@ class TestBinding:
 
 
 class TestFailOpen:
-    def test_no_token_returns_none(self, monkeypatch: pytest.MonkeyPatch, fake_gh) -> None:
+    def test_no_token_returns_none(self, monkeypatch: pytest.MonkeyPatch, fake_gh: _FakeGh) -> None:
         monkeypatch.delenv("GH_TOKEN", raising=False)
         monkeypatch.delenv("GITHUB_TOKEN", raising=False)
         fake_gh("sddcinfo")
@@ -156,7 +168,9 @@ class TestFailOpen:
         )
         assert result is None
 
-    def test_failed_probe_returns_none(self, monkeypatch: pytest.MonkeyPatch, fake_gh) -> None:
+    def test_failed_probe_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, fake_gh: _FakeGh
+    ) -> None:
         monkeypatch.setenv("GH_TOKEN", "ghp_unknown")
         fake_gh(None)  # simulate gh api /user failure
         result = identity.check_identity(
@@ -166,7 +180,9 @@ class TestFailOpen:
         )
         assert result is None
 
-    def test_non_write_returns_none(self, monkeypatch: pytest.MonkeyPatch, fake_gh) -> None:
+    def test_non_write_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, fake_gh: _FakeGh
+    ) -> None:
         monkeypatch.setenv("GH_TOKEN", "ghp_sddcinfo_pat")
         fake_gh("sddcinfo")
         # `gh pr list` is read-only — no enforcement.
@@ -197,7 +213,7 @@ class TestIdentityBeforeRuleEval:
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
-        fake_gh,
+        fake_gh: _FakeGh,
     ) -> None:
         # Rules file: an `ask` rule for `git push --force` + bindings.
         rules_path = tmp_path / "rules.yaml"
@@ -239,7 +255,7 @@ class TestIdentityBeforeRuleEval:
         )
 
     def test_in_repo_push_still_allowed_when_owner_matches(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fake_gh
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fake_gh: _FakeGh
     ) -> None:
         """Sanity: when login matches the target, the chain proceeds
         to rule evaluation as usual."""
@@ -286,12 +302,15 @@ class TestTokenCache:
 
         # Cause any subprocess call to fail loudly so we can prove
         # the cache short-circuit fires before the call site.
-        def boom(*_a, **_k):  # pragma: no cover - failure-path guard
+        def boom(*_a: object, **_k: object) -> object:  # pragma: no cover - failure-path guard
             raise AssertionError(
                 "subprocess.run should not be called when the identity cache file is fresh."
             )
 
-        monkeypatch.setattr(identity.subprocess, "run", boom)
+        # identity does `import subprocess`, so patching the module object
+        # patches the same `run` the module calls — and avoids reaching
+        # through identity for a non-reexported attribute.
+        monkeypatch.setattr(subprocess, "run", boom)
 
         result = identity._identity_for_token(token)
         assert result == "sddcinfo"
