@@ -313,6 +313,12 @@ def _write_health(report: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    # Recursion guard (defense-in-depth; bin/preflight catches this first).
+    # A SessionStart fired inside a plugin-spawned `claude --print` (probe or
+    # review) must not re-probe, or each level spawns another claude and
+    # fork-bombs. The launchers export CLAUDE_PLAN_REVIEW_NESTED on the child.
+    if os.environ.get("CLAUDE_PLAN_REVIEW_NESTED"):
+        return 0
     # Parse stdin so the hook archive captures the SessionStart invocation.
     inv = _io.parse_stdin(__file__)
     _io.log(inv, "preflight running")

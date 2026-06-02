@@ -105,6 +105,9 @@ def _cred_signature(name: str) -> str:
 
 def _run_cli_probe(argv: list[str]) -> tuple[bool, str]:
     """Pipe PROBE_PROMPT through stdin; assert response contains the token."""
+    # Mark the child so a probed `claude --print` session's SessionStart
+    # preflight no-ops instead of probing claude again (infinite recursion).
+    probe_env = {**os.environ, "CLAUDE_PLAN_REVIEW_NESTED": "1"}
     try:
         result = subprocess.run(
             argv,
@@ -113,6 +116,7 @@ def _run_cli_probe(argv: list[str]) -> tuple[bool, str]:
             text=True,
             timeout=PROBE_TIMEOUT_SECONDS,
             check=False,
+            env=probe_env,
         )
     except subprocess.TimeoutExpired:
         return False, f"timed out after {PROBE_TIMEOUT_SECONDS}s"

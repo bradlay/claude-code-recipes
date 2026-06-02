@@ -653,6 +653,9 @@ def _try_provider(
     _file_log(f"trying {name}{' (shadow)' if shadow else ''}: timeout={timeout}s")
 
     start = time.monotonic()
+    # Mark the child: a `claude` provider review spawns `claude --print`,
+    # whose SessionStart preflight would otherwise probe claude and recurse.
+    child_env = {**os.environ, "CLAUDE_PLAN_REVIEW_NESTED": "1"}
     try:
         result = subprocess.run(
             cmd,
@@ -661,6 +664,7 @@ def _try_provider(
             text=True,
             timeout=timeout,
             check=False,
+            env=child_env,
         )
         elapsed = time.monotonic() - start
 
