@@ -88,7 +88,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Run shellcheck
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y shellcheck
+          # Same pinned shellcheck scripts/check.sh uses, so local == CI.
+          SHELLCHECK="$(scripts/ensure-shellcheck.sh)"
           # Shellcheck every POSIX-sh launcher on disk (matches scripts/check.sh).
           # bin/ also holds python launchers (plan-review-{probe,quality,shadow});
           # filter by shebang so each file is covered or skipped by what it is,
@@ -96,7 +97,7 @@ jobs:
           for f in plugins/*/bin/*; do
             [ -f "$f" ] || continue
             case "$(head -n1 "$f")" in
-              '#!'*sh) shellcheck -s sh "$f" ;;
+              '#!'*sh) "$SHELLCHECK" -s sh "$f" ;;
             esac
           done
 

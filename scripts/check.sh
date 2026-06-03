@@ -91,22 +91,21 @@ done
 [ "$fail" = "0" ] || exit 1
 echo "  every launcher is executable"
 
-if command -v shellcheck >/dev/null 2>&1; then
-    step "shellcheck on launchers"
-    # Only POSIX-sh launchers; bin/ also holds python launchers
-    # (plan-review-{probe,quality,shadow}). Filter by shebang so the set
-    # matches CI's shellcheck job and adapts to new launchers automatically.
-    for f in plugins/*/bin/*; do
-        [ -f "$f" ] || continue
-        case "$(head -n1 "$f")" in
-            '#!'*sh) shellcheck -s sh "$f" ;;
-        esac
-    done
-    echo "  shellcheck clean"
-else
-    echo
-    echo "  (shellcheck not installed; skipping)"
-fi
+step "shellcheck on launchers"
+# Resolve a pinned shellcheck (downloaded on demand, cached) so this gate
+# always runs — never silently skipped, which would let a lint regression
+# pass here yet red CI — and runs the same version CI does.
+SHELLCHECK="$(scripts/ensure-shellcheck.sh)"
+# Only POSIX-sh launchers; bin/ also holds python launchers
+# (plan-review-{probe,quality,shadow}). Filter by shebang so the set
+# matches CI's shellcheck job and adapts to new launchers automatically.
+for f in plugins/*/bin/*; do
+    [ -f "$f" ] || continue
+    case "$(head -n1 "$f")" in
+        '#!'*sh) "$SHELLCHECK" -s sh "$f" ;;
+    esac
+done
+echo "  shellcheck clean"
 
 if command -v claude >/dev/null 2>&1; then
     step "claude plugin validate"
