@@ -22,7 +22,11 @@ step() {
     printf '\n=== %s ===\n' "$1"
 }
 
-PLUGINS="plan-review-loop bash-guard subagent-context-injector precompact-context-keeper posttooluse-bash-audit branch-warn"
+# Plugins are discovered from the filesystem (plugins/*/) by the mypy and
+# pytest loops below — not a hand-maintained list. CI type-checks and
+# tests every plugin on disk; deriving the set the same way keeps this
+# gate a superset of CI so it can never silently skip one (which is how a
+# stop-session-check break once passed locally yet reddened CI).
 
 step "ruff check (lint)"
 ruff check plugins/
@@ -31,20 +35,20 @@ step "ruff format --check"
 ruff format --check plugins/
 
 step "mypy --strict per plugin"
-for p in $PLUGINS; do
-    if [ -d "plugins/$p/scripts" ]; then
-        echo "  mypy $p"
-        MYPYPATH="plugins/$p/scripts" mypy --strict --explicit-package-bases --ignore-missing-imports "plugins/$p/scripts"
-    fi
+for d in plugins/*/; do
+    p=$(basename "$d")
+    [ -d "plugins/$p/scripts" ] || continue
+    echo "  mypy $p"
+    MYPYPATH="plugins/$p/scripts" mypy --strict --explicit-package-bases --ignore-missing-imports "plugins/$p/scripts"
 done
 
 step "pytest per plugin"
-for p in $PLUGINS; do
+for d in plugins/*/; do
+    p=$(basename "$d")
     test_dir="tests/$(echo "$p" | tr '-' '_')"
-    if [ -d "$test_dir" ]; then
-        echo "  pytest $test_dir"
-        pytest -q "$test_dir"
-    fi
+    [ -d "$test_dir" ] || continue
+    echo "  pytest $test_dir"
+    pytest -q "$test_dir"
 done
 
 step "Empty-except gate"
