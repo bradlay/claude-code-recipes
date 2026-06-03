@@ -93,9 +93,14 @@ echo "  every launcher is executable"
 
 if command -v shellcheck >/dev/null 2>&1; then
     step "shellcheck on launchers"
+    # Only POSIX-sh launchers; bin/ also holds python launchers
+    # (plan-review-{probe,quality,shadow}). Filter by shebang so the set
+    # matches CI's shellcheck job and adapts to new launchers automatically.
     for f in plugins/*/bin/*; do
         [ -f "$f" ] || continue
-        shellcheck -s sh "$f"
+        case "$(head -n1 "$f")" in
+            '#!'*sh) shellcheck -s sh "$f" ;;
+        esac
     done
     echo "  shellcheck clean"
 else

@@ -38,7 +38,13 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install mypy + types
-        run: pip install 'mypy>=1.13' 'types-PyYAML>=6'
+        # pytest is a typecheck dependency, not only a test one: the
+        # _lib/test_*.py files use @pytest.fixture, and under --strict an
+        # unresolved pytest import makes those decorators untyped
+        # (untyped-decorator) — an error that surfaces only where pytest is
+        # absent. Dev machines always have it, so check.sh stays green while CI
+        # reds. Install it here so CI mypy sees the identical types.
+        run: pip install 'mypy>=1.13' 'types-PyYAML>=6' 'pytest>=8'
       # Discover plugins from the tree so a new plugins/<name>/ is type-checked
       # automatically — no per-plugin step to add and forget. scripts/check.sh
       # uses the identical rule, keeping the local pre-push gate in lockstep.
@@ -83,10 +89,15 @@ jobs:
       - name: Run shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y shellcheck
-          # Every launcher on disk, discovered by glob (matches scripts/check.sh).
+          # Shellcheck every POSIX-sh launcher on disk (matches scripts/check.sh).
+          # bin/ also holds python launchers (plan-review-{probe,quality,shadow});
+          # filter by shebang so each file is covered or skipped by what it is,
+          # not a hand-maintained list that silently misses new launchers.
           for f in plugins/*/bin/*; do
             [ -f "$f" ] || continue
-            shellcheck -s sh "$f"
+            case "$(head -n1 "$f")" in
+              '#!'*sh) shellcheck -s sh "$f" ;;
+            esac
           done
 
   json-validate:
