@@ -251,14 +251,14 @@ def _identity_for_token(token: str) -> str | None:
         return None
     if result.returncode != 0:
         return None
-    login = result.stdout.strip().lower()
-    if not login:
+    api_login = result.stdout.strip().lower()
+    if not api_login:
         return None
     with contextlib.suppress(OSError):
         cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        cache_file.write_text(json.dumps({"login": login, "ts": time.time()}))
+        cache_file.write_text(json.dumps({"login": api_login, "ts": time.time()}))
         cache_file.chmod(0o600)
-    return login
+    return api_login
 
 
 def check_identity(
