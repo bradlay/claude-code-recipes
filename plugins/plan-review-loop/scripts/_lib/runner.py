@@ -59,7 +59,6 @@ class ReviewOutcome:
 # Set to a generous value because real loops should never reach it
 # under healthy convergence.
 _DEFAULT_SAFETY_MAX_ITERATIONS = 10
-_HISTORY_INACTIVITY_DAYS = 30
 # Convergence thresholds. At iteration ≥ 2 the runner compares the
 # current findings' IDs against the PRIOR iteration's findings. If
 # the overlap (Jaccard similarity) is below this threshold, the
@@ -117,8 +116,8 @@ def _history_path(plan_path: Path) -> Path:
 
     Reset triggers:
       * explicit `--reset` flag.
-      * inactivity > _HISTORY_INACTIVITY_DAYS (abandoned-plan cleanup
-        in `_prune_state_dir()`, NOT an active-plan reset).
+      * inactivity > 30 days (abandoned-plan cleanup in
+        `_prune_state_dir()`, NOT an active-plan reset).
       * clean review (the loop closed; next ExitPlanMode starts at
         iteration 1).
     """
