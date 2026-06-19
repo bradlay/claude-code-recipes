@@ -7,6 +7,15 @@
 
 set -eu
 
+# Recursion guard. Probing the `claude` provider (in preflight, or running a
+# review with claude in the chain) spawns `claude --print`, whose own
+# SessionStart fires this hook again — which probes claude again, and so on:
+# an exponential fork-bomb. The probe/provider launchers export
+# CLAUDE_PLAN_REVIEW_NESTED on the child, so a marked session skips preflight.
+if [ -n "${CLAUDE_PLAN_REVIEW_NESTED:-}" ]; then
+    exit 0
+fi
+
 if ! command -v python3 >/dev/null 2>&1; then
     exit 0
 fi

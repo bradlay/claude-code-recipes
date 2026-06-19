@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+import pytest
+
 import preflight
 
 
@@ -393,3 +395,42 @@ class TestReportSignatureShadowHealth:
         sig_a = preflight._report_signature(self._base_report("ok"))
         sig_b = preflight._report_signature(self._base_report("ok"))
         assert sig_a == sig_b
+
+
+class TestNestedRecursionGuard:
+    """Guard against the SessionStart fork-bomb: probing/reviewing with the
+    `claude` provider spawns `claude --print`, whose own SessionStart fires
+    preflight again. The launchers set CLAUDE_PLAN_REVIEW_NESTED on the child
+    so a marked session must short-circuit before doing any provider probing.
+    """
+
+    def test_main_short_circuits_when_nested(self) -> None:
+        env = {"CLAUDE_PLAN_REVIEW_NESTED": "1"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            # _build_report is what launches the recursive `claude --print`
+            # probe; a nested session must never reach it.
+            with mock.patch.object(
+                preflight,
+                "_build_report",
+                side_effect=AssertionError("preflight must not probe when nested"),
+            ):
+                rc = preflight.main()
+        assert rc == 0
+
+    def test_main_probes_when_not_nested(self) -> None:
+        # Sanity check the guard isn't always-on: without the marker, main()
+        # proceeds far enough to call _build_report (the probe entry point).
+        # A sentinel from the stub proves we reached it, without simulating
+        # the downstream signature/cache tail.
+        class _Reached(Exception):
+            pass
+
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PLAN_REVIEW_NESTED"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with (
+                mock.patch.object(preflight, "_build_report", side_effect=_Reached),
+                mock.patch.object(preflight._io, "parse_stdin", return_value={}),
+                mock.patch.object(preflight._io, "log"),
+            ):
+                with pytest.raises(_Reached):
+                    preflight.main()

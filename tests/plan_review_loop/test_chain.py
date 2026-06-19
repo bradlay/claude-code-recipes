@@ -137,6 +137,61 @@ class TestProviderRegistry:
         assert any("xhigh" in arg for arg in codex_cmd)
 
 
+class TestResolveChain:
+    """Resolution order: explicit CLAUDE_PLAN_REVIEW_CHAIN with at
+    least one valid provider wins; otherwise CLAUDE_PLAN_REVIEW_TIER
+    selects strict (default) or fast. Unknown tier falls back to
+    strict; an entirely-invalid CLAUDE_PLAN_REVIEW_CHAIN falls
+    through to the tier path."""
+
+    def test_explicit_chain_with_valid_providers_wins(self) -> None:
+        env = {
+            "CLAUDE_PLAN_REVIEW_CHAIN": "claude,codex",
+            "CLAUDE_PLAN_REVIEW_TIER": "fast",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            assert chain.resolve_chain() == ["claude", "codex"]
+
+    def test_explicit_chain_with_only_invalid_falls_back_to_tier(self) -> None:
+        env = {
+            "CLAUDE_PLAN_REVIEW_CHAIN": "foo,bar",
+            "CLAUDE_PLAN_REVIEW_TIER": "fast",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            assert chain.resolve_chain() == ["claude"]
+
+    def test_explicit_chain_all_invalid_no_tier_falls_back_to_strict(self) -> None:
+        env = {"CLAUDE_PLAN_REVIEW_CHAIN": "foo,bar"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            assert chain.resolve_chain() == ["codex", "gemini", "claude"]
+
+    def test_tier_fast(self) -> None:
+        with mock.patch.dict(os.environ, {"CLAUDE_PLAN_REVIEW_TIER": "fast"}, clear=True):
+            assert chain.resolve_chain() == ["claude"]
+
+    def test_tier_strict_default(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            assert chain.resolve_chain() == ["codex", "gemini", "claude"]
+
+    def test_tier_invalid_falls_back_to_strict(self) -> None:
+        with mock.patch.dict(os.environ, {"CLAUDE_PLAN_REVIEW_TIER": "loose"}, clear=True):
+            assert chain.resolve_chain() == ["codex", "gemini", "claude"]
+
+    def test_tier_case_insensitive(self) -> None:
+        with mock.patch.dict(os.environ, {"CLAUDE_PLAN_REVIEW_TIER": "FAST"}, clear=True):
+            assert chain.resolve_chain() == ["claude"]
+
+    def test_returns_fresh_list_per_call(self) -> None:
+        """Callers that mutate the result must not corrupt subsequent
+        calls. Verifies resolve_chain copies its source rather than
+        returning a reference to a module-level constant."""
+        with mock.patch.dict(os.environ, {}, clear=True):
+            first = chain.resolve_chain()
+            first.append("local")
+            second = chain.resolve_chain()
+            assert second == ["codex", "gemini", "claude"]
+
+
 class TestMetadataOnlyLogs:
     def test_default_writes_full_content(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):

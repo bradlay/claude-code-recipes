@@ -67,6 +67,18 @@ def user_rules_file() -> Path:
     return _xdg("XDG_CONFIG_HOME", ".config") / "claude-bash-guard" / "rules.yaml"
 
 
+def trusted_projects_file() -> Path:
+    """Allowlist of git roots whose ``.bash-guard-rules.yaml`` files
+    the engine will honor. Lives OUT of any repo so an agent inside a
+    repo cannot grant itself trust by editing the file in-tree.
+
+    Shape: ``{trusted: [/abs/path, ...]}``. Missing/empty file disables
+    project-rule discovery entirely (safe default — no project file is
+    ever loaded).
+    """
+    return _xdg("XDG_CONFIG_HOME", ".config") / "claude-bash-guard" / "trusted-projects.yaml"
+
+
 def claude_config_dir() -> Path:
     raw = os.environ.get("CLAUDE_CONFIG_DIR")
     if raw:

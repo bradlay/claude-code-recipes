@@ -119,6 +119,66 @@ across the whole pipeline.
 anchored as `^git\s+push` still fires when called as
 `git -C /repo push`.
 
+The evaluator tracks `cwd` across leading `cd <path>` statements in
+the chain, matching bash semantics:
+
+```
+cd /home/me/repos/foo && git checkout main
+```
+
+Here the second sub-command's effective target dir is
+`/home/me/repos/foo` even though the hook payload's `cwd` was
+elsewhere. A `git -C <path>` prefix overrides per-sub-command — so
+`git -C /home/me/repos/foo checkout main` from any starting cwd
+resolves the target to `/home/me/repos/foo`.
+
+## Deploy-worktree exemption
+
+Some setups keep a deploy worktree of `main` next to the dev worktree:
+
+```
+~/repos/foo         # branch main, runs the live service
+~/repos/foo-dev     # branch dev, where work happens
+```
+
+A "stay on dev; PR to main" rule should fire in `repos/foo-dev` but
+NOT in `repos/foo` — the deploy copy legitimately runs
+`git checkout main / pull / ff-merge`. Tag those rules with a category
+listed in `settings.exempt_categories_for_deploy_worktree`:
+
+```yaml
+settings:
+  exempt_categories_for_deploy_worktree: ["git-protected"]
+
+rules:
+  - id: stay-on-dev-checkout
+    category: git-protected
+    pattern: '^git\s+(-C\s*\S+\s+)?checkout\s+(main|master)\b'
+    decision: deny
+    reason: "Stay on dev. Use PR to land on main."
+```
+
+The exemption fires when the sub-command's effective target dir
+(from `cd` tracking or a `git -C <path>` prefix) is inside a
+`repos/<name>` directory where `<name>` does NOT end in `-dev`. The
+monorepo root and any `*-dev` worktree stay fully protected.
+Filesystem and history-rewriting rules live in different categories
+and continue to fire everywhere — only categories you explicitly list
+are exempt.
+
+## Settings inheritance
+
+`settings:` keys are merged across the plugin's defaults and any user
+override at `~/.config/claude-bash-guard/rules.yaml`. Keys in the user
+file always win; keys it omits inherit from the defaults. This means
+the deploy-worktree exemption above stays active even on machines
+where the user override file silently doesn't carry the
+`exempt_categories_for_deploy_worktree` line.
+
+`rules:` are NOT merged — when a user override exists, its rules
+fully replace the defaults. If you want to add to defaults rather than
+replace them, copy the default-rules.yaml as a starting point.
+
 ## Approving an `ask` decision
 
 When the guard returns `ask`, you'll get a deny with a message saying
