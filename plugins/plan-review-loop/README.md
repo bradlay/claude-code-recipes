@@ -11,7 +11,7 @@ machines where that's a problem.
 
 - The full plan markdown is sent to whichever provider runs first in
   `CLAUDE_PLAN_REVIEW_CHAIN`. Default chain is `codex,gemini,claude`:
-  `codex` (OpenAI Codex CLI, `gpt-5.4` at `xhigh` reasoning) is the
+  `codex` (OpenAI Codex CLI, `gpt-5.5` at `xhigh` reasoning) is the
   primary; `gemini` (Google Gemini CLI) and `claude` (Anthropic Claude
   CLI) are fallbacks tried in order if the previous one fails.
 - On re-review, prior findings are sent too.

@@ -39,15 +39,15 @@ _SECURE_FILE_MODE = 0o600
 # single setting flows to every Claude Code session and every tool that reads
 # these constants:
 #
-#   CLAUDE_PLAN_REVIEW_CODEX_MODEL    (default: "gpt-5.4")
+#   CLAUDE_PLAN_REVIEW_CODEX_MODEL    (default: "gpt-5.5")
 #   CLAUDE_PLAN_REVIEW_GEMINI_MODEL   (default: "auto-gemini-3")
 #   CLAUDE_PLAN_REVIEW_CLAUDE_MODEL   (default: "claude-sonnet-4-6")
 #   CLAUDE_PLAN_REVIEW_LOCAL_MODEL    (handled in local_provider.py)
 #
 # auto-gemini-3 is Google's stable alias for the Gemini 3 family auto-router;
-# specific IDs like gemini-3-pro do not resolve via the gemini CLI. gpt-5.4
+# specific IDs like gemini-3-pro do not resolve via the gemini CLI. gpt-5.5
 # requires a paid OpenAI tier; the chain refuses to silently downgrade.
-CODEX_MODEL = os.environ.get("CLAUDE_PLAN_REVIEW_CODEX_MODEL", "gpt-5.4")
+CODEX_MODEL = os.environ.get("CLAUDE_PLAN_REVIEW_CODEX_MODEL", "gpt-5.5")
 GEMINI_MODEL = os.environ.get("CLAUDE_PLAN_REVIEW_GEMINI_MODEL", "auto-gemini-3")
 CLAUDE_SONNET_MODEL = os.environ.get("CLAUDE_PLAN_REVIEW_CLAUDE_MODEL", "claude-sonnet-4-6")
 
@@ -310,7 +310,7 @@ PROVIDER_CMDS: dict[str, list[str]] = {
     "local": [sys.executable, str(Path(__file__).resolve().parent / "local_provider.py")],
 }
 
-# Default chain: codex first (gpt-5.4 xhigh); gemini and claude as fallbacks.
+# Default chain: codex first (gpt-5.5 xhigh); gemini and claude as fallbacks.
 # Override with CLAUDE_PLAN_REVIEW_CHAIN (see README).
 DEFAULT_CHAINS: dict[str, list[str]] = {
     "plan": ["codex", "gemini", "claude"],
@@ -318,7 +318,7 @@ DEFAULT_CHAINS: dict[str, list[str]] = {
 
 # Tier presets selectable via CLAUDE_PLAN_REVIEW_TIER. `strict` is the
 # default and tracks DEFAULT_CHAINS["plan"]; `fast` skips codex/gemini
-# so routine plans don't pay the gpt-5.4 xhigh cost. Explicit
+# so routine plans don't pay the gpt-5.5 xhigh cost. Explicit
 # CLAUDE_PLAN_REVIEW_CHAIN always wins; tier is the fallback.
 _FAST_CHAIN: list[str] = ["claude"]
 
