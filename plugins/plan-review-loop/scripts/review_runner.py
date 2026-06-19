@@ -110,6 +110,24 @@ def main() -> int:
             f"{outcome.elapsed_seconds:.1f}s): clean",
         )
         return 0
+    if outcome.status == "max_iterations_with_unresolved_p0":
+        print(
+            f"Iteration {outcome.iteration} ({outcome.provider}): "
+            f"REVIEW LOOP TERMINATED with unresolved P0 — BLOCKING",
+        )
+        print(_format_findings(outcome.findings))
+        if outcome.error:
+            print(outcome.error)
+        return 1
+    if outcome.status == "max_iterations_reached":
+        print(
+            f"Iteration {outcome.iteration} ({outcome.provider}): "
+            f"review loop exited, no P0 — allowing with advisory",
+        )
+        print(_format_findings(outcome.findings))
+        if outcome.error:
+            print(outcome.error)
+        return 0
     # provider_failed
     print("All configured providers failed.", file=sys.stderr)
     return 2

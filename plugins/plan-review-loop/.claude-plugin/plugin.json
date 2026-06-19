@@ -1,6 +1,6 @@
 {
   "name": "plan-review-loop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Codex reviews every Claude Code plan before ExitPlanMode is allowed. Denies exit on P0/P1 findings and re-injects them so Claude revises the plan; loop closes when the plan is clean.",
   "author": {
     "name": "bradlay"

@@ -1,0 +1,10 @@
+{
+  "name": "putty-bridge",
+  "version": "0.1.0",
+  "description": "Generate a Windows PuTTY .reg + tmux snippet for remote tmux + Claude Code: UTF-8, true color, deuteranopia-friendly dark palette, native copy/paste (right-click pastes, Shift-drag in tmux mouse-mode auto-copies via PuTTY's local selection), 50k scrollback, secure defaults. No PuTTY GUI clicks.",
+  "author": {
+    "name": "bradlay"
+  },
+  "homepage": "https://github.com/bradlay/claude-code-recipes",
+  "license": "MIT"
+}
