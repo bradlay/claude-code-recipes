@@ -32,10 +32,9 @@ if str(_THIS_DIR) not in sys.path:
 from _lib import _io, paths  # noqa: E402
 from _lib.guard import (  # noqa: E402
     consume_approval,
-    evaluate_rules,
+    evaluate_chain,
     load_rules,
     log_block,
-    split_chained_commands,
 )
 
 
@@ -87,21 +86,7 @@ def main() -> int:
 
     try:
         config = load_rules()
-        sub_commands = split_chained_commands(command)
-
-        decision = "allow"
-        reason = ""
-        offending_sub = ""
-
-        for sub_cmd in sub_commands:
-            if not sub_cmd:
-                continue
-            sub_decision, sub_reason = evaluate_rules(sub_cmd, config)
-            if sub_decision != "allow":
-                decision = sub_decision
-                reason = sub_reason
-                offending_sub = sub_cmd
-                break
+        decision, reason, offending_sub = evaluate_chain(command, config, inv.cwd)
 
         if decision == "allow":
             return _io.emit_pretooluse_allow()

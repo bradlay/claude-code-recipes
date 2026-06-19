@@ -29,11 +29,10 @@ if str(_THIS_DIR) not in sys.path:
 
 from _lib.chain import (  # noqa: E402
     PROVIDER_CMDS,
-    _chain_from_env,
     _shadow_from_env,
+    resolve_chain,
 )
 from _lib.probes import ProbeResult, probe_provider  # noqa: E402
-from _lib.runner import default_chain  # noqa: E402
 
 
 def _resolve_targets(provider: str | None) -> list[str]:
@@ -45,7 +44,7 @@ def _resolve_targets(provider: str | None) -> list[str]:
             )
             sys.exit(2)
         return [provider]
-    chain = _chain_from_env() or default_chain()
+    chain = resolve_chain()
     shadow = _shadow_from_env()
     targets: list[str] = []
     for name in (*chain, *shadow):
@@ -59,7 +58,7 @@ def _resolve_targets(provider: str | None) -> list[str]:
 
 
 def _format_human(targets: list[str], results: list[ProbeResult]) -> str:
-    chain = _chain_from_env() or default_chain()
+    chain = resolve_chain()
     shadow = _shadow_from_env()
     lines: list[str] = []
     lines.append(f"chain: {' -> '.join(chain)}")

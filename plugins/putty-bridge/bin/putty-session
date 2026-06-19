@@ -1,0 +1,13 @@
+#!/bin/sh
+# /putty-session launcher. Fail-loud: if python3 is missing we tell the
+# user explicitly because this command's whole purpose is to write files.
+
+set -eu
+
+if ! command -v python3 >/dev/null 2>&1; then
+    printf 'putty-session: python3 not found on PATH\n' >&2
+    exit 127
+fi
+
+dir="$(dirname "$0")"
+exec python3 "$dir/../scripts/putty_session.py" "$@"

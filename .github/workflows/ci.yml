@@ -38,21 +38,25 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install mypy + types
-        run: pip install 'mypy>=1.13' 'types-PyYAML>=6'
-      - name: mypy plan-review-loop
-        run: mypy --strict --explicit-package-bases --ignore-missing-imports plugins/plan-review-loop/scripts
-      - name: mypy bash-guard
-        run: MYPYPATH=plugins/bash-guard/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/bash-guard/scripts
-      - name: mypy subagent-context-injector
-        run: MYPYPATH=plugins/subagent-context-injector/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/subagent-context-injector/scripts
-      - name: mypy precompact-context-keeper
-        run: MYPYPATH=plugins/precompact-context-keeper/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/precompact-context-keeper/scripts
-      - name: mypy posttooluse-bash-audit
-        run: MYPYPATH=plugins/posttooluse-bash-audit/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/posttooluse-bash-audit/scripts
-      - name: mypy branch-warn
-        run: MYPYPATH=plugins/branch-warn/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/branch-warn/scripts
-      - name: mypy stop-session-check
-        run: MYPYPATH=plugins/stop-session-check/scripts mypy --strict --explicit-package-bases --ignore-missing-imports plugins/stop-session-check/scripts
+        # pytest is a typecheck dependency, not only a test one: the
+        # _lib/test_*.py files use @pytest.fixture, and under --strict an
+        # unresolved pytest import makes those decorators untyped
+        # (untyped-decorator) — an error that surfaces only where pytest is
+        # absent. Dev machines always have it, so check.sh stays green while CI
+        # reds. Install it here so CI mypy sees the identical types.
+        run: pip install 'mypy>=1.13' 'types-PyYAML>=6' 'pytest>=8'
+      # Discover plugins from the tree so a new plugins/<name>/ is type-checked
+      # automatically — no per-plugin step to add and forget. scripts/check.sh
+      # uses the identical rule, keeping the local pre-push gate in lockstep.
+      - name: mypy --strict per plugin
+        run: |
+          for d in plugins/*/; do
+            p=$(basename "$d")
+            [ -d "plugins/$p/scripts" ] || continue
+            echo "::group::mypy $p"
+            MYPYPATH="plugins/$p/scripts" mypy --strict --explicit-package-bases --ignore-missing-imports "plugins/$p/scripts"
+            echo "::endgroup::"
+          done
 
   pytest:
     name: Tests (pytest)
@@ -64,20 +68,18 @@ jobs:
           python-version: "3.13"
       - name: Install pytest + plugin runtime deps
         run: pip install 'pytest>=8' 'pyyaml>=6'
-      - name: pytest plan-review-loop
-        run: pytest tests/plan_review_loop
-      - name: pytest bash-guard
-        run: pytest tests/bash_guard
-      - name: pytest subagent-context-injector
-        run: pytest tests/subagent_context_injector
-      - name: pytest precompact-context-keeper
-        run: pytest tests/precompact_context_keeper
-      - name: pytest posttooluse-bash-audit
-        run: pytest tests/posttooluse_bash_audit
-      - name: pytest branch-warn
-        run: pytest tests/branch_warn
-      - name: pytest stop-session-check
-        run: pytest tests/stop_session_check
+      # Discover test suites from the tree (one per plugins/<name>/), mirroring
+      # scripts/check.sh, so adding a plugin needs no edit here.
+      - name: pytest per plugin
+        run: |
+          for d in plugins/*/; do
+            p=$(basename "$d")
+            td="tests/$(echo "$p" | tr - _)"
+            [ -d "$td" ] || continue
+            echo "::group::pytest $td"
+            pytest "$td"
+            echo "::endgroup::"
+          done
 
   shellcheck:
     name: Shellcheck (bin/)
@@ -86,8 +88,18 @@ jobs:
       - uses: actions/checkout@v6
       - name: Run shellcheck
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y shellcheck
-          shellcheck -s sh plugins/plan-review-loop/bin/plan-review-hook plugins/plan-review-loop/bin/preflight plugins/bash-guard/bin/bash-guard plugins/subagent-context-injector/bin/subagent-context plugins/precompact-context-keeper/bin/precompact-keeper plugins/posttooluse-bash-audit/bin/audit plugins/branch-warn/bin/branch-warn plugins/stop-session-check/bin/stop-check
+          # Same pinned shellcheck scripts/check.sh uses, so local == CI.
+          SHELLCHECK="$(scripts/ensure-shellcheck.sh)"
+          # Shellcheck every POSIX-sh launcher on disk (matches scripts/check.sh).
+          # bin/ also holds python launchers (plan-review-{probe,quality,shadow});
+          # filter by shebang so each file is covered or skipped by what it is,
+          # not a hand-maintained list that silently misses new launchers.
+          for f in plugins/*/bin/*; do
+            [ -f "$f" ] || continue
+            case "$(head -n1 "$f")" in
+              '#!'*sh) "$SHELLCHECK" -s sh "$f" ;;
+            esac
+          done
 
   json-validate:
     name: Validate plugin manifests
@@ -99,31 +111,22 @@ jobs:
           python-version: "3.13"
       - name: Parse all JSON manifests
         run: |
+          # Glob every manifest on disk (matches scripts/check.sh) so a new
+          # plugin's JSON is validated without editing this list. A plugin
+          # without a hooks.json (the glob simply omits it) is fine.
           python3 -c "
-          import json, sys, pathlib
-          paths = [
-              '.claude-plugin/marketplace.json',
-              'plugins/plan-review-loop/.claude-plugin/plugin.json',
-              'plugins/plan-review-loop/hooks/hooks.json',
-              'plugins/bash-guard/.claude-plugin/plugin.json',
-              'plugins/bash-guard/hooks/hooks.json',
-              'plugins/subagent-context-injector/.claude-plugin/plugin.json',
-              'plugins/subagent-context-injector/hooks/hooks.json',
-              'plugins/precompact-context-keeper/.claude-plugin/plugin.json',
-              'plugins/precompact-context-keeper/hooks/hooks.json',
-              'plugins/posttooluse-bash-audit/.claude-plugin/plugin.json',
-              'plugins/posttooluse-bash-audit/hooks/hooks.json',
-              'plugins/branch-warn/.claude-plugin/plugin.json',
-              'plugins/branch-warn/hooks/hooks.json',
-              'plugins/stop-session-check/.claude-plugin/plugin.json',
-              'plugins/stop-session-check/hooks/hooks.json',
-          ]
+          import glob, json, sys
+          paths = ['.claude-plugin/marketplace.json']
+          paths += sorted(glob.glob('plugins/*/.claude-plugin/plugin.json'))
+          paths += sorted(glob.glob('plugins/*/hooks/hooks.json'))
+          rc = 0
           for p in paths:
               try:
                   json.load(open(p))
                   print(f'OK: {p}')
               except Exception as e:
-                  print(f'FAIL: {p}: {e}'); sys.exit(1)
+                  print(f'FAIL: {p}: {e}'); rc = 1
+          sys.exit(rc)
           "
       - name: Verify required keys
         run: |

@@ -5,7 +5,7 @@
 # free tier. Results are cached at $DATA_DIR/probe-cache.json with a 24h
 # TTL and invalidated when relevant credential files are touched.
 #
-# Why probe at all: the chain hardcodes high-tier models (gpt-5.4,
+# Why probe at all: the chain hardcodes high-tier models (gpt-5.5,
 # auto-gemini-3, claude-sonnet-4-6). A free or downgraded account silently
 # substitutes a weaker model and tanks review quality. The probe asserts
 # the actual model returns a recognizable response; an account that
@@ -105,6 +105,9 @@ def _cred_signature(name: str) -> str:
 
 def _run_cli_probe(argv: list[str]) -> tuple[bool, str]:
     """Pipe PROBE_PROMPT through stdin; assert response contains the token."""
+    # Mark the child so a probed `claude --print` session's SessionStart
+    # preflight no-ops instead of probing claude again (infinite recursion).
+    probe_env = {**os.environ, "CLAUDE_PLAN_REVIEW_NESTED": "1"}
     try:
         result = subprocess.run(
             argv,
@@ -113,6 +116,7 @@ def _run_cli_probe(argv: list[str]) -> tuple[bool, str]:
             text=True,
             timeout=PROBE_TIMEOUT_SECONDS,
             check=False,
+            env=probe_env,
         )
     except subprocess.TimeoutExpired:
         return False, f"timed out after {PROBE_TIMEOUT_SECONDS}s"

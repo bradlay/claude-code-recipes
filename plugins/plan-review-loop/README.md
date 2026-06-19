@@ -11,7 +11,7 @@ machines where that's a problem.
 
 - The full plan markdown is sent to whichever provider runs first in
   `CLAUDE_PLAN_REVIEW_CHAIN`. Default chain is `codex,gemini,claude`:
-  `codex` (OpenAI Codex CLI, `gpt-5.4` at `xhigh` reasoning) is the
+  `codex` (OpenAI Codex CLI, `gpt-5.5` at `xhigh` reasoning) is the
   primary; `gemini` (Google Gemini CLI) and `claude` (Anthropic Claude
   CLI) are fallbacks tried in order if the previous one fails.
 - On re-review, prior findings are sent too.
@@ -74,7 +74,8 @@ of each session. Cached so unchanged status doesn't re-emit.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `CLAUDE_PLAN_REVIEW_CHAIN` | `codex,gemini,claude` | Comma-separated provider list. Tried in order; first to return a clean response wins. Valid: `codex`, `gemini`, `claude`. |
+| `CLAUDE_PLAN_REVIEW_CHAIN` | unset | Comma-separated provider list. Wins over `CLAUDE_PLAN_REVIEW_TIER` when at least one entry resolves to a known provider. Valid: `codex`, `gemini`, `claude`, `local`. |
+| `CLAUDE_PLAN_REVIEW_TIER` | `strict` | Tier preset used when `CLAUDE_PLAN_REVIEW_CHAIN` is unset (or all-invalid). `strict` → `codex,gemini,claude` (paid review). `fast` → `claude` only (cheap, seconds-per-review). Unknown values fall back to `strict`. |
 | `CLAUDE_PLAN_REVIEW_FAIL_OPEN` | unset | Set to `1` to allow plan exit when prereqs fail or all providers fail. Default denies. |
 | `CLAUDE_PLAN_REVIEW_LOGS_METADATA_ONLY` | unset | Set to `1` to drop full prompt/stdout/stderr from per-cycle logs and keep only metadata. Default writes everything. |
 | `CLAUDE_PLAN_REVIEW_PLAN_MAX_AGE_SECONDS` | `3600` | Max age of plans considered when falling back to "newest plan in plans dir". |
@@ -144,8 +145,10 @@ in your chain), or set `CLAUDE_PLAN_REVIEW_FAIL_OPEN=1`.
 
 **Review takes minutes.** Codex `xhigh` reasoning runs 5 to 15 minutes
 on complex plans. The hook timeout is 1260s. If you want a faster gate,
-set `CLAUDE_PLAN_REVIEW_CHAIN=claude` (Sonnet at default reasoning is
-seconds).
+set `CLAUDE_PLAN_REVIEW_TIER=fast` (Sonnet at default reasoning is
+seconds) — useful for routine plans where you don't need the paid chain.
+`CLAUDE_PLAN_REVIEW_CHAIN=...` lets you spell out an arbitrary order
+when neither tier preset fits.
 
 **Two sessions can't review the same plan at once.** Correct: the
 second is denied with the lock-busy message. Wait for the first to

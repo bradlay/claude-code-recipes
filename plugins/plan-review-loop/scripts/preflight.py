@@ -26,9 +26,8 @@ if str(_THIS_DIR) not in sys.path:
 
 from _lib import _io, paths  # noqa: E402
 from _lib._shadow_signature import current_shadow_config_signature  # noqa: E402
-from _lib.chain import PROVIDER_CMDS, _chain_from_env, _shadow_from_env  # noqa: E402
+from _lib.chain import PROVIDER_CMDS, _shadow_from_env, resolve_chain  # noqa: E402
 from _lib.probes import ProbeResult, probe_provider  # noqa: E402
-from _lib.runner import default_chain  # noqa: E402
 from quality_report import _load_logs  # noqa: E402
 
 
@@ -118,7 +117,7 @@ def _check_writable(directory: Path) -> bool:
 
 
 def _build_report() -> dict[str, Any]:
-    chain = _chain_from_env() or default_chain()
+    chain = resolve_chain()
     shadow = _shadow_from_env()
 
     findings: list[str] = []
@@ -314,6 +313,12 @@ def _write_health(report: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    # Recursion guard (defense-in-depth; bin/preflight catches this first).
+    # A SessionStart fired inside a plugin-spawned `claude --print` (probe or
+    # review) must not re-probe, or each level spawns another claude and
+    # fork-bombs. The launchers export CLAUDE_PLAN_REVIEW_NESTED on the child.
+    if os.environ.get("CLAUDE_PLAN_REVIEW_NESTED"):
+        return 0
     # Parse stdin so the hook archive captures the SessionStart invocation.
     inv = _io.parse_stdin(__file__)
     _io.log(inv, "preflight running")
