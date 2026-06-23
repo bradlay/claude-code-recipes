@@ -21,6 +21,7 @@ Plugins I use day-to-day. Public so others can pull what's useful.
 | [`posttooluse-bash-audit`](./plugins/posttooluse-bash-audit/) | Appends every executed Bash command (timestamp + session id + summary) to a local audit log. Always fail-open. |
 | [`branch-warn`](./plugins/branch-warn/) | Emits "on branch X" once per hour on UserPromptSubmit. Quiet on feature branches, louder on `main`/`master`. |
 | [`stop-session-check`](./plugins/stop-session-check/) | Stop hook that blocks session-end when there are uncommitted changes or unpushed commits. Surfaces a repo-type-aware completion checklist. |
+| [`hermes-tweet`](./plugins/hermes-tweet/) | Guides Claude Code users through the native Hermes Agent X/Twitter plugin: install, read-first workflows, and action-gated publishing. |
 
 ## Development
 
