@@ -62,7 +62,34 @@ return {"findings": [], "questions": []}.
 Output ONLY the JSON object. No markdown fences, no narrative, no prose.
 """
 
+# Focused short-scope variant used under autoswe (CLAUDE_PLAN_REVIEW_LOCAL_FOCUSED).
+# Same JSON schema so the parser is unchanged; tighter guidance + a smaller
+# token budget keep the local pass fast and on-task. The reviewer sees only
+# the plan text (no conversation history) — that is the fresh context.
+_FOCUSED_SYSTEM_PROMPT = """\
+You are a focused plan reviewer running a fast local pass. Review ONLY the plan text shown — no outside context.
+
+Return a single JSON object with this exact schema:
+{"findings": [{"severity": "P0|P1|P2", "title": "...", "description": "...", "recommendation": "..."}], "questions": ["..."]}
+
+Report only concrete, high-signal issues (prefer P0/P1: correctness, safety, data loss, missing failure handling) with actionable recommendations. Skip stylistic nits. If the plan looks good, return {"findings": [], "questions": []}.
+
+Output ONLY the JSON object. No markdown fences, no narrative, no prose.
+"""
+
 _THINK_BLOCK_RE = re.compile(r"<think>[\s\S]*?</think>")
+
+
+def _system_prompt() -> str:
+    """Tighter system prompt when the focused (autoswe) marker is set."""
+    if os.environ.get("CLAUDE_PLAN_REVIEW_LOCAL_FOCUSED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return _FOCUSED_SYSTEM_PROMPT
+    return _SYSTEM_PROMPT
 
 
 class LocalProviderError(RuntimeError):
@@ -164,7 +191,7 @@ def call_model(url: str, model_id: str, prompt: str) -> str:
     payload: dict[str, Any] = {
         "model": model_id,
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": _system_prompt()},
             {"role": "user", "content": prompt},
         ],
         "temperature": temperature,

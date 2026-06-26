@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+# Per-session plan-review backend selection — see scripts/plan_review_select.py.
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+sys.path.insert(0, str(_SCRIPTS))
+
+from plan_review_select import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from . import paths
-from .chain import ChainResult, run_chain
+from .chain import SELF_REVIEW_PREAMBLE, ChainResult, is_self_review_chain, run_chain
 
 logger = logging.getLogger(__name__)
 
@@ -612,6 +612,11 @@ def review_plan(
             max_iter,
             chain,
         )
+
+        # Self-review backends (opus/sonnet) get adversarial framing so a
+        # same-family reviewer pushes back instead of rubber-stamping.
+        if is_self_review_chain(chain):
+            prompt = SELF_REVIEW_PREAMBLE + prompt
 
         result: ChainResult = run_chain(
             prompt,

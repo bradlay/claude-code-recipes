@@ -1,7 +1,7 @@
 {
   "name": "plan-review-loop",
-  "version": "0.1.1",
-  "description": "Codex reviews every Claude Code plan before ExitPlanMode is allowed. Denies exit on P0/P1 findings and re-injects them so Claude revises the plan; loop closes when the plan is clean.",
+  "version": "0.2.0",
+  "description": "Reviews every Claude Code plan before ExitPlanMode is allowed. Pick a backend per session (Opus 4.8, Sonnet 4.6, codex gpt-5.5, or Gemini 3.1 Pro via agy) — only ones that pass a live probe are offered; autoswe runs review locally. Denies exit on P0/P1 findings and re-injects them so Claude revises the plan; loop closes when the plan is clean.",
   "author": {
     "name": "bradlay"
   },

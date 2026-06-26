@@ -27,29 +27,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import paths
+from . import backends, paths
 from ._shadow_signature import current_shadow_config_signature
 
 logger = logging.getLogger(__name__)
 
 _SECURE_FILE_MODE = 0o600
 
-# Model selection. Defaults are the highest-tier published alias per provider.
-# Override centrally via env vars (export from ~/.bashrc, .envrc, etc.) so a
-# single setting flows to every Claude Code session and every tool that reads
-# these constants:
-#
-#   CLAUDE_PLAN_REVIEW_CODEX_MODEL    (default: "gpt-5.5")
-#   CLAUDE_PLAN_REVIEW_GEMINI_MODEL   (default: "auto-gemini-3")
-#   CLAUDE_PLAN_REVIEW_CLAUDE_MODEL   (default: "claude-sonnet-4-6")
-#   CLAUDE_PLAN_REVIEW_LOCAL_MODEL    (handled in local_provider.py)
-#
-# auto-gemini-3 is Google's stable alias for the Gemini 3 family auto-router;
-# specific IDs like gemini-3-pro do not resolve via the gemini CLI. gpt-5.5
-# requires a paid OpenAI tier; the chain refuses to silently downgrade.
-CODEX_MODEL = os.environ.get("CLAUDE_PLAN_REVIEW_CODEX_MODEL", "gpt-5.5")
-GEMINI_MODEL = os.environ.get("CLAUDE_PLAN_REVIEW_GEMINI_MODEL", "auto-gemini-3")
-CLAUDE_SONNET_MODEL = os.environ.get("CLAUDE_PLAN_REVIEW_CLAUDE_MODEL", "claude-sonnet-4-6")
+# Model selection and the exact CLI argv per backend live in
+# _lib/backends.py — the single source of truth. Backend keys (opus,
+# sonnet, codex, gemini [agy-backed], local) are the chain currency, the
+# probe targets, and the interactive picker choices. Every model default
+# is env-overridable; see backends.py. The `gemini` key runs the `agy`
+# gateway CLI, so a legacy CLAUDE_PLAN_REVIEW_CHAIN=gemini keeps working.
 
 
 def _review_log_file() -> Path:
@@ -290,42 +280,34 @@ def _save_cycle_log(
         return None
 
 
+# Built from the backend registry so the argv + model for each backend is
+# defined in exactly one place. Keyed by backend key (= chain currency).
+# The `local` OpenAI-compat backend (vLLM/Ollama/llama.cpp/...) is not in
+# any default chain — it is auto-selected under autoswe or opted into via
+# CLAUDE_PLAN_REVIEW_CHAIN / CLAUDE_PLAN_REVIEW_SHADOW.
 PROVIDER_CMDS: dict[str, list[str]] = {
-    "codex": [
-        "codex",
-        "exec",
-        "-c",
-        f'model="{CODEX_MODEL}"',
-        "-c",
-        'model_reasoning_effort="xhigh"',
-        "--skip-git-repo-check",
-    ],
-    "gemini": ["gemini", "--model", GEMINI_MODEL, "-p", ""],
-    "claude": ["claude", "--print", "--model", CLAUDE_SONNET_MODEL],
-    # Local OpenAI-compat backend (vLLM, Ollama, llama.cpp server, ...).
-    # Configure URL/model via CLAUDE_PLAN_REVIEW_LOCAL_* env vars; see
-    # _lib/local_provider.py. Not in any default chain — opt in via
-    # CLAUDE_PLAN_REVIEW_CHAIN or CLAUDE_PLAN_REVIEW_SHADOW.
-    # Absolute path so the subprocess (fresh sys.path) can find it.
-    "local": [sys.executable, str(Path(__file__).resolve().parent / "local_provider.py")],
+    key: backend.run_argv() for key, backend in backends.REGISTRY.items()
 }
 
-# Default chain: codex first (gpt-5.5 xhigh); gemini and claude as fallbacks.
-# Override with CLAUDE_PLAN_REVIEW_CHAIN (see README).
+# Default fallback chain used only when the caller passes no chain AND no
+# explicit CLAUDE_PLAN_REVIEW_CHAIN is set. The ExitPlanMode hook normally
+# passes a single picked backend, so this is the CLI / non-interactive
+# fallback: codex, then agy-served Gemini, then self-review Opus.
 DEFAULT_CHAINS: dict[str, list[str]] = {
-    "plan": ["codex", "gemini", "claude"],
+    "plan": ["codex", "gemini", "opus"],
 }
 
 # Tier presets selectable via CLAUDE_PLAN_REVIEW_TIER. `strict` is the
-# default and tracks DEFAULT_CHAINS["plan"]; `fast` skips codex/gemini
-# so routine plans don't pay the gpt-5.5 xhigh cost. Explicit
+# default and tracks DEFAULT_CHAINS["plan"]; `fast` is a single cheap
+# self-review leg so routine plans skip the paid codex/agy cost. Explicit
 # CLAUDE_PLAN_REVIEW_CHAIN always wins; tier is the fallback.
-_FAST_CHAIN: list[str] = ["claude"]
+_FAST_CHAIN: list[str] = ["sonnet"]
 
 PROVIDER_TIMEOUTS: dict[str, int] = {
     "codex": 900,
     "gemini": 180,
-    "claude": 180,
+    "opus": 300,
+    "sonnet": 180,
     "local": 600,
 }
 DEFAULT_PROVIDER_TIMEOUT = 300
@@ -333,13 +315,20 @@ DEFAULT_PROVIDER_TIMEOUT = 300
 MAX_CHAIN_SECONDS = 1200
 
 
-def _chain_from_env() -> list[str] | None:
-    raw = os.environ.get("CLAUDE_PLAN_REVIEW_CHAIN")
-    if not raw:
-        return None
-    names = [n.strip() for n in raw.split(",") if n.strip()]
-    valid = [n for n in names if n in PROVIDER_CMDS]
-    invalid = [n for n in names if n not in PROVIDER_CMDS]
+def normalize_chain(tokens: list[str]) -> list[str] | None:
+    """Map raw chain tokens (including legacy aliases like `gemini`->agy and
+    `claude`->sonnet) to canonical backend keys, dropping unknowns and
+    de-duplicating. Returns None if nothing valid remains so callers fall
+    through to the tier default. This is the one place legacy/explicit
+    chains are validated, so a removed provider can never resurface."""
+    valid: list[str] = []
+    invalid: list[str] = []
+    for tok in tokens:
+        key = backends.normalize_key(tok)
+        if key is None:
+            invalid.append(tok)
+        elif key not in valid:
+            valid.append(key)
     if invalid:
         logger.warning(
             "chain_env_unknown_providers: invalid=%r allowed=%r",
@@ -347,6 +336,13 @@ def _chain_from_env() -> list[str] | None:
             list(PROVIDER_CMDS),
         )
     return valid or None
+
+
+def _chain_from_env() -> list[str] | None:
+    raw = os.environ.get("CLAUDE_PLAN_REVIEW_CHAIN")
+    if not raw:
+        return None
+    return normalize_chain([n for n in raw.split(",") if n.strip()])
 
 
 def _tier_from_env() -> list[str]:
@@ -371,6 +367,28 @@ def resolve_chain(mode: str = "plan") -> list[str]:
     if explicit:
         return explicit
     return _tier_from_env()
+
+
+# Adversarial framing prepended to the prompt for self-review backends
+# (opus/sonnet). A same-family reviewer needs to be pushed to disagree with
+# the author model rather than rubber-stamp it, so we make the independence
+# and default-skepticism explicit.
+SELF_REVIEW_PREAMBLE = (
+    "You are an INDEPENDENT, ADVERSARIAL plan reviewer. You did NOT write "
+    "this plan. Your job is to find why it is wrong, incomplete, or unsafe — "
+    "not to agree with it. Default to skepticism: if a step is unjustified, a "
+    "failure mode is unhandled, or a claim is unverified, raise it as a "
+    "finding. Only return a clean review when you genuinely cannot find a "
+    "real issue.\n\n"
+)
+
+
+def is_self_review_chain(chain: list[str] | None) -> bool:
+    """True when every backend in the chain is a self-review (claude) leg, so
+    the runner knows to prepend SELF_REVIEW_PREAMBLE."""
+    if not chain:
+        return False
+    return all(c in backends.SELF_REVIEW_KEYS for c in chain)
 
 
 def _shadow_from_env() -> list[str]:
