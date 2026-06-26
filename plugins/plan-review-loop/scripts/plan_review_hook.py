@@ -110,6 +110,12 @@ def _decide_chain(inv: HookInvocation) -> ChainDecision:
 
     # No usable selection: surface only backends verified working right now.
     available = probes.available_backends()
+    _io.log(
+        inv,
+        "picker: local_url="
+        + ("set" if _env("CLAUDE_PLAN_REVIEW_LOCAL_URL") else "unset")
+        + f" keys={backends.picker_keys()} available={[r.name for r in available]}",
+    )
     if not available:
         return ChainDecision(
             "fail",
