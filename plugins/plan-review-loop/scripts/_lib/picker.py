@@ -81,10 +81,15 @@ def read_selection(session_id: str) -> dict[str, Any] | None:
 def write_selection(session_id: str, backend_key: str) -> None:
     """Persist the chosen backend. Raises ValueError on an unknown key so the
     select command surfaces a clear error rather than writing garbage."""
+    # Validate against the full registry, NOT picker_keys: the select command
+    # runs as its own subprocess that may not inherit CLAUDE_PLAN_REVIEW_LOCAL_URL,
+    # so gating `local` here would reject a backend the picker legitimately
+    # offered. The offer gate lives in the picker; a `local` pick with no
+    # reachable endpoint self-heals at the pre-review re-probe in the hook.
     canonical = backends.normalize_key(backend_key)
-    allowed = backends.picker_keys()
-    if canonical is None or canonical not in allowed:
-        raise ValueError(f"unknown backend {backend_key!r}; choose one of: {', '.join(allowed)}")
+    if canonical is None or canonical not in backends.REGISTRY:
+        allowed = ", ".join(backends.REGISTRY)
+        raise ValueError(f"unknown backend {backend_key!r}; choose one of: {allowed}")
     _atomic_write(
         _selection_path(session_id),
         {"backend_key": canonical, "chain": [canonical], "ts": time.time(), "attempts": 0},
@@ -153,8 +158,10 @@ def build_picker_instruction(
         f"--session {shlex.quote(session_id)} <key>"
     )
     step1 = (
-        "1. Use AskUserQuestion to ask the user which backend to review this "
-        "plan with (one option per backend key listed above)."
+        "1. STOP. Do not run the command below and do not choose a backend on "
+        "the user's behalf. FIRST call the AskUserQuestion tool to ask the user "
+        "which backend to review this plan with (one option per backend key "
+        "listed above)."
     )
     step2 = (
         "2. Persist their choice by running this exact command, replacing "
@@ -165,5 +172,7 @@ def build_picker_instruction(
         "backend. The choice is remembered for the rest of this session "
         "(use /plan-review-loop:plan-review-backend to change it)."
     )
-    lines.extend(["", "ACTION REQUIRED:", step1, step2, f"   {cmd}", step3])
+    lines.extend(
+        ["", "ACTION REQUIRED (do NOT pick a backend yourself):", step1, step2, f"   {cmd}", step3]
+    )
     return "\n".join(lines)

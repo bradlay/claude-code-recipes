@@ -49,10 +49,14 @@ class TestSelectionRoundtrip:
         with pytest.raises(ValueError, match="unknown backend"):
             picker.write_selection("sess", "bogus")
 
-    def test_write_rejects_offline_local(self) -> None:
-        # local is autoswe-only; the interactive picker must not select it.
-        with pytest.raises(ValueError):
-            picker.write_selection("sess", "local")
+    def test_write_accepts_local_any_env(self) -> None:
+        # write validates against the full registry (the select subprocess may
+        # not see LOCAL_URL); the offer gate lives in the picker, and an
+        # unreachable local pick self-heals at the pre-review re-probe.
+        picker.write_selection("sess", "local")
+        sel = picker.read_selection("sess")
+        assert sel is not None
+        assert sel["backend_key"] == "local"
 
     def test_read_rejects_stale_key(self) -> None:
         picker._atomic_write(picker._selection_path("sess"), {"backend_key": "removed"})
@@ -110,10 +114,13 @@ def test_write_accepts_local_when_url_set(monkeypatch) -> None:  # type: ignore[
     assert sel["backend_key"] == "local"
 
 
-def test_write_rejects_local_when_url_unset(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_write_accepts_local_without_url(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # Accepted even without LOCAL_URL: reachability is checked at review time,
+    # not at selection time (the select subprocess may not inherit the env).
     monkeypatch.delenv("CLAUDE_PLAN_REVIEW_LOCAL_URL", raising=False)
-    with pytest.raises(ValueError, match="unknown backend"):
-        picker.write_selection("sess", "local")
+    picker.write_selection("sess", "local")
+    sel = picker.read_selection("sess")
+    assert sel is not None and sel["backend_key"] == "local"
 
 
 def test_instruction_notes_local_default(monkeypatch) -> None:  # type: ignore[no-untyped-def]
