@@ -132,11 +132,14 @@ def build_picker_instruction(
     inherit the plugin env vars the hook runs with, so the selection must land
     in the same data dir the hook reads back."""
     now = time.time()
-    lines = [
+    # Multi-line strings are built as parenthesized variables (not as adjacent
+    # literals inside the list literal) so the implicit concatenation is
+    # unambiguous and not a possible-missing-comma footgun.
+    header = (
         "Plan-review backend not selected for this session. Only backends "
-        "whose auth/model probe currently passes are offered:",
-        "",
-    ]
+        "whose auth/model probe currently passes are offered:"
+    )
+    lines = [header, ""]
     for result in available:
         backend = backends.REGISTRY[result.name]
         lines.append(
@@ -146,18 +149,18 @@ def build_picker_instruction(
         f"CLAUDE_PLUGIN_DATA={shlex.quote(data_dir)} {shlex.quote(select_bin)} "
         f"--session {shlex.quote(session_id)} <key>"
     )
-    lines.extend(
-        [
-            "",
-            "ACTION REQUIRED:",
-            "1. Use AskUserQuestion to ask the user which backend to review "
-            "this plan with (one option per backend key listed above).",
-            "2. Persist their choice by running this exact command, replacing "
-            "<key> with the chosen backend key:",
-            f"   {cmd}",
-            "3. Call ExitPlanMode again — the review will run against the "
-            "chosen backend. The choice is remembered for the rest of this "
-            "session (use /plan-review-backend to change it).",
-        ]
+    step1 = (
+        "1. Use AskUserQuestion to ask the user which backend to review this "
+        "plan with (one option per backend key listed above)."
     )
+    step2 = (
+        "2. Persist their choice by running this exact command, replacing "
+        "<key> with the chosen backend key:"
+    )
+    step3 = (
+        "3. Call ExitPlanMode again — the review will run against the chosen "
+        "backend. The choice is remembered for the rest of this session "
+        "(use /plan-review-backend to change it)."
+    )
+    lines.extend(["", "ACTION REQUIRED:", step1, step2, f"   {cmd}", step3])
     return "\n".join(lines)
