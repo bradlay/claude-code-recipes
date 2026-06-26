@@ -13,7 +13,20 @@ The user invoked this command with: `$ARGUMENTS`
 
 ## What to do
 
-1. If `$ARGUMENTS` contains `clear`, run:
+1. FIRST, check whether a backend is already pinned for this session:
+
+   ```
+   printenv CLAUDE_PLAN_REVIEW_CHAIN
+   ```
+
+   If that prints a non-empty value, the review backend is PINNED and there is
+   nothing to choose. This is the case in an `autosre claude` (local) session,
+   which pins `local` so reviews stay 100% on the local qwen. Tell the user the
+   backend is pinned to that value and **STOP** — do NOT probe, do NOT show a
+   picker. The picker is only for sessions where no chain is pinned (e.g. bare
+   cloud `claude`).
+
+2. If `$ARGUMENTS` contains `clear`, run:
 
    ```
    CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" "${CLAUDE_PLUGIN_ROOT}/bin/plan-review-select" --latest-session --clear
@@ -21,7 +34,7 @@ The user invoked this command with: `$ARGUMENTS`
 
    Then tell the user the next `ExitPlanMode` will ask again, and stop.
 
-2. Otherwise, find which backends are verified working right now:
+3. Otherwise, find which backends are verified working right now:
 
    ```
    CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" "${CLAUDE_PLUGIN_ROOT}/bin/plan-review-probe" --online --json
@@ -30,11 +43,11 @@ The user invoked this command with: `$ARGUMENTS`
    Only offer backend keys whose probe result is `ok` (one of: `opus`,
    `sonnet`, `codex`, `gemini`). If none pass, report that and stop.
 
-3. Use **AskUserQuestion** to ask which backend to use, one option per
+4. Use **AskUserQuestion** to ask which backend to use, one option per
    verified key (label them: Opus 4.8 / Sonnet 4.6 / codex gpt-5.5 /
    Gemini 3.1 Pro).
 
-4. Persist the choice (replace `<key>` with the chosen key):
+5. Persist the choice (replace `<key>` with the chosen key):
 
    ```
    CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" "${CLAUDE_PLUGIN_ROOT}/bin/plan-review-select" --latest-session --reprobe <key>
