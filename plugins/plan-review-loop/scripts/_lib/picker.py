@@ -150,9 +150,6 @@ def build_picker_instruction(
         lines.append(
             f"  - {result.name}: {backend.label} [model {result.model}; {_age_label(result, now)}]"
         )
-    if available and available[0].name == "local":
-        lines.append("")
-        lines.append("Local qwen is this session's default; you may still pick any backend above.")
     cmd = (
         f"CLAUDE_PLUGIN_DATA={shlex.quote(data_dir)} {shlex.quote(select_bin)} "
         f"--session {shlex.quote(session_id)} <key>"

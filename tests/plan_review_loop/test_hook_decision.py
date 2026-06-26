@@ -139,11 +139,3 @@ class TestAutosweOverride:
         monkeypatch.setenv("CLAUDE_PLAN_REVIEW_AUTOSELECT", "opus")
         d = hook._decide_chain(_inv())
         assert d.kind == "proceed" and d.chain == ["opus"]
-
-    def test_local_offered_in_picker_when_url_set(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-        # autosre claude: LOCAL_URL set, no AUTOSWE_RUN_ID -> picker incl. local.
-        monkeypatch.setenv("CLAUDE_PLAN_REVIEW_LOCAL_URL", "http://x:8010")
-        monkeypatch.setattr(probes, "available_backends", lambda **kw: [_ok("local"), _ok("opus")])
-        d = hook._decide_chain(_inv("fresh-local"))
-        assert d.kind == "deny" and d.health == "picker_prompt"
-        assert "local" in d.context

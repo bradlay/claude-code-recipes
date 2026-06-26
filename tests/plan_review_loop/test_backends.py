@@ -104,7 +104,9 @@ class TestPickerKeys:
         with mock.patch.dict(os.environ, {}, clear=True):
             assert backends.picker_keys() == ["opus", "sonnet", "codex", "gemini"]
 
-    def test_local_url_prepends_local_as_default(self) -> None:
+    def test_local_url_does_not_add_local(self) -> None:
+        # local is never an interactive picker option; it is reached only via
+        # CLAUDE_PLAN_REVIEW_CHAIN=local / AUTOSWE_RUN_ID.
         env = {"CLAUDE_PLAN_REVIEW_LOCAL_URL": "http://127.0.0.1:8010"}
         with mock.patch.dict(os.environ, env, clear=True):
-            assert backends.picker_keys() == ["local", "opus", "sonnet", "codex", "gemini"]
+            assert backends.picker_keys() == ["opus", "sonnet", "codex", "gemini"]

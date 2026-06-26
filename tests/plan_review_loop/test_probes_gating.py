@@ -48,12 +48,13 @@ def test_probe_cache_then_reprobe_on_stale(monkeypatch) -> None:  # type: ignore
     assert calls.count("codex") == 2
 
 
-def test_available_includes_local_first_when_url_set(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_available_excludes_local_even_with_url(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # local is never offered in the interactive picker, even when reachable.
     monkeypatch.setenv("CLAUDE_PLAN_REVIEW_LOCAL_URL", "http://x:8010")
     monkeypatch.setattr(probes, "_run_probe", lambda name: (True, "ok"))
     avail = probes.available_backends(force=True)
-    assert avail[0].name == "local"  # local is the default (first)
-    assert {r.name for r in avail} == {"local", "opus", "sonnet", "codex", "gemini"}
+    assert "local" not in {r.name for r in avail}
+    assert {r.name for r in avail} == {"opus", "sonnet", "codex", "gemini"}
 
 
 def test_available_excludes_local_when_url_unset(monkeypatch) -> None:  # type: ignore[no-untyped-def]

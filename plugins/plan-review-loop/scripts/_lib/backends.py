@@ -162,12 +162,12 @@ ONLINE_KEYS: list[str] = [k for k, b in REGISTRY.items() if b.online]
 
 
 def picker_keys() -> list[str]:
-    """Backends offered in the interactive picker. The online cloud backends
-    always; local qwen is prepended (as the session default) ONLY when
-    CLAUDE_PLAN_REVIEW_LOCAL_URL is configured -- e.g. an `autosre claude`
-    session -- so a normal session never sees a dead local option."""
-    if os.environ.get("CLAUDE_PLAN_REVIEW_LOCAL_URL", "").strip():
-        return ["local", *ONLINE_KEYS]
+    """Backends offered in the interactive picker: the online cloud backends
+    only. `local` qwen is never an interactive option, because the model in a
+    local session (qwen) can't reliably render the picker anyway. Local review
+    is reached NON-interactively instead: CLAUDE_PLAN_REVIEW_CHAIN=local (an
+    `autosre claude` local-mode session, 100% local) or AUTOSWE_RUN_ID. This
+    also keeps a normal session free of a dead local option."""
     return list(ONLINE_KEYS)
 
 
