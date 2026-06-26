@@ -63,7 +63,20 @@ def _decide_chain(inv: HookInvocation) -> ChainDecision:
     if _env("CLAUDE_PLAN_REVIEW_NESTED"):
         return ChainDecision("proceed", chain=None)
 
-    # autoswe: local qwen only, proven reachable synchronously, no prompt.
+    # Explicit backend selection (CHAIN / AUTOSELECT) is honored everywhere,
+    # INCLUDING under autoswe: qwen is the autoswe default, not a hard lock, so
+    # an operator can point an autoswe run at a cloud backend via env. These
+    # are non-interactive, which is required because the autonomous autoswe
+    # loop has no human to answer an interactive picker.
+    if _env("CLAUDE_PLAN_REVIEW_CHAIN"):
+        return ChainDecision("proceed", chain=None)  # resolve_chain normalizes
+    autoselect = _env("CLAUDE_PLAN_REVIEW_AUTOSELECT")
+    if autoselect:
+        key = backends.normalize_key(autoselect)
+        if key is not None:
+            return ChainDecision("proceed", chain=[key])
+
+    # autoswe default: local qwen, proven reachable synchronously, no prompt.
     # Headless runs may never have warmed the SessionStart probe cache and a
     # stale positive would hang the run, so force a fresh reachability check.
     if _env("AUTOSWE_RUN_ID"):
@@ -75,22 +88,16 @@ def _decide_chain(inv: HookInvocation) -> ChainDecision:
             "fail",
             reason=(
                 f"autoswe plan review: local vLLM unreachable at {url} "
-                f"({result.detail}). autoswe reviews run only against the local "
-                "model and do not fall back to a cloud backend."
+                f"({result.detail}). Bring the local model up, or set "
+                "CLAUDE_PLAN_REVIEW_CHAIN / CLAUDE_PLAN_REVIEW_AUTOSELECT to "
+                "review this autoswe run with a different backend."
             ),
             health="autoswe_local_unreachable",
         )
 
-    # Explicit chain or tier preset — non-interactive operator intent.
-    if _env("CLAUDE_PLAN_REVIEW_CHAIN") or _env("CLAUDE_PLAN_REVIEW_TIER"):
+    # Tier preset — non-interactive fallback for non-autoswe sessions.
+    if _env("CLAUDE_PLAN_REVIEW_TIER"):
         return ChainDecision("proceed", chain=None)
-
-    # Deterministic, log-visible auto-selection (opt-in).
-    autoselect = _env("CLAUDE_PLAN_REVIEW_AUTOSELECT")
-    if autoselect:
-        key = backends.normalize_key(autoselect)
-        if key is not None:
-            return ChainDecision("proceed", chain=[key])
 
     # Sticky per-session selection — re-probe the chosen backend right before
     # the review so an auth that expired since the pick is caught here.
@@ -124,7 +131,7 @@ def _decide_chain(inv: HookInvocation) -> ChainDecision:
             reason="plan-review backend still not selected; failing closed.",
             context=(
                 f"No backend was selected after {attempts - 1} prompt(s). Pick "
-                "one with the /plan-review-backend command, or set "
+                "one with the /plan-review-loop:plan-review-backend command, or set "
                 "CLAUDE_PLAN_REVIEW_AUTOSELECT=<key> (or "
                 "CLAUDE_PLAN_REVIEW_CHAIN=<key>) for a non-interactive default. "
                 f"Backends: {', '.join(backends.ONLINE_KEYS)}."

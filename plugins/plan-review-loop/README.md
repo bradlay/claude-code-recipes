@@ -74,7 +74,7 @@ PreToolUse hook on `ExitPlanMode`:
    or forced to `local` under `autoswe`), use it. Otherwise deny once with
    a prompt listing the probe-verified backends; pick one (via
    `AskUserQuestion` + the printed `bin/plan-review-select` command, or
-   `/plan-review-backend`) and re-run `ExitPlanMode`. The choice is sticky
+   `/plan-review-loop:plan-review-backend`) and re-run `ExitPlanMode`. The choice is sticky
    for the session.
 4. Send the plan to the selected backend, re-probed immediately before use.
 5. P0/P1 findings cause a deny + findings as `additionalContext`.
@@ -96,17 +96,25 @@ Backends offered in the picker (only those whose probe currently passes):
 | `sonnet` | self-review via `claude` | `claude-sonnet-4-6` |
 | `codex` | OpenAI Codex CLI | `gpt-5.5` (xhigh) |
 | `gemini` | `agy` gateway | `Gemini 3.1 Pro (High)` |
+| `local` | OpenAI-compat (qwen) | offered + default ONLY when `CLAUDE_PLAN_REVIEW_LOCAL_URL` is set |
 
 The first `ExitPlanMode` of a session asks which to use; the choice is
-sticky. Change it any time with `/plan-review-backend` (or
-`/plan-review-backend clear` to be re-asked). Self-review (`opus`/`sonnet`)
+sticky. Change it any time with `/plan-review-loop:plan-review-backend` (or
+`/plan-review-loop:plan-review-backend clear` to be re-asked). Self-review (`opus`/`sonnet`)
 runs Claude in a fresh, adversarial context — it is independent of the
 planning session but shares model-family blind spots, so `codex`/`gemini`
 add an outside view. To skip the prompt entirely, set
 `CLAUDE_PLAN_REVIEW_CHAIN` or `CLAUDE_PLAN_REVIEW_AUTOSELECT`.
 
-Under `autoswe` the backend is always the local qwen vLLM (proven reachable
-before each review, no cloud fallback) and you are never prompted.
+When `CLAUDE_PLAN_REVIEW_LOCAL_URL` is set (e.g. an `autosre claude` session),
+local qwen joins the picker as the default while the cloud backends stay
+selectable. A normal session (no local URL) never sees it.
+
+Under an `autoswe` run (headless, `AUTOSWE_RUN_ID` set) the local qwen is the
+default and you are never prompted — but an explicit
+`CLAUDE_PLAN_REVIEW_CHAIN` / `CLAUDE_PLAN_REVIEW_AUTOSELECT` still wins, so a
+run can be pointed at a cloud backend. The local endpoint is proven reachable
+before the review; if it is down the run fails closed with a clear message.
 
 ## Configuration
 

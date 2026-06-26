@@ -144,7 +144,7 @@ REGISTRY: dict[str, Backend] = {
     ),
     "local": Backend(
         key="local",
-        label="local qwen (autoswe)",
+        label="local qwen",
         binary=sys.executable,
         online=False,
         model_env="CLAUDE_PLAN_REVIEW_LOCAL_MODEL",
@@ -159,6 +159,16 @@ SELF_REVIEW_KEYS: frozenset[str] = frozenset({"opus", "sonnet"})
 
 # Stable order for the picker.
 ONLINE_KEYS: list[str] = [k for k, b in REGISTRY.items() if b.online]
+
+
+def picker_keys() -> list[str]:
+    """Backends offered in the interactive picker. The online cloud backends
+    always; local qwen is prepended (as the session default) ONLY when
+    CLAUDE_PLAN_REVIEW_LOCAL_URL is configured -- e.g. an `autosre claude`
+    session -- so a normal session never sees a dead local option."""
+    if os.environ.get("CLAUDE_PLAN_REVIEW_LOCAL_URL", "").strip():
+        return ["local", *ONLINE_KEYS]
+    return list(ONLINE_KEYS)
 
 
 def normalize_key(raw: str) -> str | None:

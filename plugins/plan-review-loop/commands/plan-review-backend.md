@@ -4,7 +4,7 @@ argument-hint: "[clear]"
 allowed-tools: [Bash, AskUserQuestion]
 ---
 
-# /plan-review-backend
+# /plan-review-loop:plan-review-backend
 
 Pick the plan-review backend for this session. The choice is sticky: every
 `ExitPlanMode` reviews against it until you change it or the session ends.
@@ -24,7 +24,7 @@ The user invoked this command with: `$ARGUMENTS`
 2. Otherwise, find which backends are verified working right now:
 
    ```
-   CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" "${CLAUDE_PLUGIN_ROOT}/bin/plan-review-probe" --json
+   CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" "${CLAUDE_PLUGIN_ROOT}/bin/plan-review-probe" --online --json
    ```
 
    Only offer backend keys whose probe result is `ok` (one of: `opus`,

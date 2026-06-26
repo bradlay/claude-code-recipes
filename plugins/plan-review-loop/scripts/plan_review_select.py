@@ -2,7 +2,7 @@
 # Persist / clear / re-probe the per-session plan-review backend selection.
 #
 # Run by Claude after AskUserQuestion (the ExitPlanMode hook prints the exact,
-# self-contained command), or by the /plan-review-backend command.
+# self-contained command), or by the /plan-review-loop:plan-review-backend command.
 #
 # Usage:
 #   plan-review-select --session <id> <key>            # persist a choice
@@ -31,7 +31,7 @@ from _lib.probes import probe_provider  # noqa: E402
 
 
 def _latest_session_id() -> str | None:
-    """Newest session id from the hook archive — lets /plan-review-backend
+    """Newest session id from the hook archive — lets /plan-review-loop:plan-review-backend
     re-pick without the hook handing it the id."""
     path = paths.hooks_raw_jsonl()
     if not path.exists():

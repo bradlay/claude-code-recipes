@@ -100,3 +100,27 @@ class TestInstruction:
         assert "/abs/bin/plan-review-select" in text
         assert "--session sess-123" in text
         assert "AskUserQuestion" in text
+
+
+def test_write_accepts_local_when_url_set(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("CLAUDE_PLAN_REVIEW_LOCAL_URL", "http://x:8010")
+    picker.write_selection("sess", "local")
+    sel = picker.read_selection("sess")
+    assert sel is not None
+    assert sel["backend_key"] == "local"
+
+
+def test_write_rejects_local_when_url_unset(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.delenv("CLAUDE_PLAN_REVIEW_LOCAL_URL", raising=False)
+    with pytest.raises(ValueError, match="unknown backend"):
+        picker.write_selection("sess", "local")
+
+
+def test_instruction_notes_local_default(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    available = [
+        ProbeResult(name="local", ok=True, model="qwen", last_probed=0.0),
+        ProbeResult(name="opus", ok=True, model="claude-opus-4-8", last_probed=0.0),
+    ]
+    text = picker.build_picker_instruction("s", available, select_bin="/b", data_dir="/d")
+    assert "local" in text
+    assert "default" in text.lower()

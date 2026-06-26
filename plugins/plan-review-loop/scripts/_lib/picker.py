@@ -82,9 +82,9 @@ def write_selection(session_id: str, backend_key: str) -> None:
     """Persist the chosen backend. Raises ValueError on an unknown key so the
     select command surfaces a clear error rather than writing garbage."""
     canonical = backends.normalize_key(backend_key)
-    if canonical is None or canonical not in backends.ONLINE_KEYS:
-        allowed = ", ".join(backends.ONLINE_KEYS)
-        raise ValueError(f"unknown backend {backend_key!r}; choose one of: {allowed}")
+    allowed = backends.picker_keys()
+    if canonical is None or canonical not in allowed:
+        raise ValueError(f"unknown backend {backend_key!r}; choose one of: {', '.join(allowed)}")
     _atomic_write(
         _selection_path(session_id),
         {"backend_key": canonical, "chain": [canonical], "ts": time.time(), "attempts": 0},
@@ -145,6 +145,9 @@ def build_picker_instruction(
         lines.append(
             f"  - {result.name}: {backend.label} [model {result.model}; {_age_label(result, now)}]"
         )
+    if available and available[0].name == "local":
+        lines.append("")
+        lines.append("Local qwen is this session's default; you may still pick any backend above.")
     cmd = (
         f"CLAUDE_PLUGIN_DATA={shlex.quote(data_dir)} {shlex.quote(select_bin)} "
         f"--session {shlex.quote(session_id)} <key>"
@@ -160,7 +163,7 @@ def build_picker_instruction(
     step3 = (
         "3. Call ExitPlanMode again — the review will run against the chosen "
         "backend. The choice is remembered for the rest of this session "
-        "(use /plan-review-backend to change it)."
+        "(use /plan-review-loop:plan-review-backend to change it)."
     )
     lines.extend(["", "ACTION REQUIRED:", step1, step2, f"   {cmd}", step3])
     return "\n".join(lines)

@@ -233,7 +233,7 @@ def available_backends(
     surfacing' gate for the interactive picker. Positives older than
     `max_age` are re-probed so an expired-in-window auth is not offered."""
     results: list[ProbeResult] = []
-    for key in backends.ONLINE_KEYS:
+    for key in backends.picker_keys():
         result = probe_provider(key, force=force, max_age=max_age)
         if result.ok:
             results.append(result)

@@ -47,9 +47,12 @@ def _resolve_targets(provider: str | None, *, online: bool = False) -> list[str]
         return [provider]
     if online:
         # Every interactive-picker backend whose CLI is installed — used by
-        # /plan-review-backend to offer only verified-working choices.
+        # /plan-review-loop:plan-review-backend to offer only verified-working
+        # choices. Includes local qwen when CLAUDE_PLAN_REVIEW_LOCAL_URL is set.
         return [
-            key for key in backends.ONLINE_KEYS if shutil.which(PROVIDER_CMDS.get(key, [key])[0])
+            key
+            for key in backends.picker_keys()
+            if key == "local" or shutil.which(PROVIDER_CMDS.get(key, [key])[0])
         ]
     chain = resolve_chain()
     shadow = _shadow_from_env()

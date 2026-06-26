@@ -46,3 +46,17 @@ def test_probe_cache_then_reprobe_on_stale(monkeypatch) -> None:  # type: ignore
     third = probes.probe_provider("codex", max_age=0)
     assert third.cached is False
     assert calls.count("codex") == 2
+
+
+def test_available_includes_local_first_when_url_set(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("CLAUDE_PLAN_REVIEW_LOCAL_URL", "http://x:8010")
+    monkeypatch.setattr(probes, "_run_probe", lambda name: (True, "ok"))
+    avail = probes.available_backends(force=True)
+    assert avail[0].name == "local"  # local is the default (first)
+    assert {r.name for r in avail} == {"local", "opus", "sonnet", "codex", "gemini"}
+
+
+def test_available_excludes_local_when_url_unset(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.delenv("CLAUDE_PLAN_REVIEW_LOCAL_URL", raising=False)
+    monkeypatch.setattr(probes, "_run_probe", lambda name: (True, "ok"))
+    assert "local" not in {r.name for r in probes.available_backends(force=True)}

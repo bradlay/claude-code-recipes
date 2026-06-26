@@ -97,3 +97,14 @@ class TestNormalizeKey:
         assert backends.normalize_key("bogus") is None
         assert backends.is_known("bogus") is False
         assert backends.is_known("gemini") is True
+
+
+class TestPickerKeys:
+    def test_no_local_url_excludes_local(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            assert backends.picker_keys() == ["opus", "sonnet", "codex", "gemini"]
+
+    def test_local_url_prepends_local_as_default(self) -> None:
+        env = {"CLAUDE_PLAN_REVIEW_LOCAL_URL": "http://127.0.0.1:8010"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            assert backends.picker_keys() == ["local", "opus", "sonnet", "codex", "gemini"]

@@ -123,3 +123,27 @@ class TestInteractivePicker:
             assert hook._decide_chain(_inv("loop")).health == "picker_prompt"
         d = hook._decide_chain(_inv("loop"))
         assert d.kind == "deny" and d.health == "picker_unselected"
+
+
+class TestAutosweOverride:
+    def test_explicit_chain_overrides_local(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        # qwen is the autoswe default, not a hard lock: an explicit chain wins.
+        monkeypatch.setenv("AUTOSWE_RUN_ID", "run-1")
+        monkeypatch.setenv("CLAUDE_PLAN_REVIEW_CHAIN", "opus")
+        monkeypatch.setattr(probes, "probe_provider", lambda name, **kw: _ok(name))
+        d = hook._decide_chain(_inv())
+        assert d.kind == "proceed" and d.chain is None  # resolve_chain handles "opus"
+
+    def test_autoselect_overrides_local(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setenv("AUTOSWE_RUN_ID", "run-1")
+        monkeypatch.setenv("CLAUDE_PLAN_REVIEW_AUTOSELECT", "opus")
+        d = hook._decide_chain(_inv())
+        assert d.kind == "proceed" and d.chain == ["opus"]
+
+    def test_local_offered_in_picker_when_url_set(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        # autosre claude: LOCAL_URL set, no AUTOSWE_RUN_ID -> picker incl. local.
+        monkeypatch.setenv("CLAUDE_PLAN_REVIEW_LOCAL_URL", "http://x:8010")
+        monkeypatch.setattr(probes, "available_backends", lambda **kw: [_ok("local"), _ok("opus")])
+        d = hook._decide_chain(_inv("fresh-local"))
+        assert d.kind == "deny" and d.health == "picker_prompt"
+        assert "local" in d.context
