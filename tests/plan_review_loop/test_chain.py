@@ -23,9 +23,10 @@ class TestChainFromEnv:
             assert chain._chain_from_env() == ["codex"]
 
     def test_multiple_with_whitespace(self) -> None:
+        # `claude` is a legacy alias normalized to the `sonnet` backend key.
         env = {"CLAUDE_PLAN_REVIEW_CHAIN": "codex, gemini ,claude"}
         with mock.patch.dict(os.environ, env, clear=True):
-            assert chain._chain_from_env() == ["codex", "gemini", "claude"]
+            assert chain._chain_from_env() == ["codex", "gemini", "sonnet"]
 
     def test_unknown_provider_dropped(self) -> None:
         env = {"CLAUDE_PLAN_REVIEW_CHAIN": "codex,bogus,gemini"}
@@ -118,7 +119,7 @@ class TestProviderRegistry:
         assert chain.DEFAULT_CHAINS["plan"][0] == "codex"
 
     def test_default_chain_includes_fallbacks(self) -> None:
-        assert chain.DEFAULT_CHAINS["plan"] == ["codex", "gemini", "claude"]
+        assert chain.DEFAULT_CHAINS["plan"] == ["codex", "gemini", "opus"]
 
     def test_local_provider_registered_but_not_default(self) -> None:
         # `local` is a generic OpenAI-compat client (vLLM/Ollama/llama.cpp);
@@ -145,12 +146,13 @@ class TestResolveChain:
     through to the tier path."""
 
     def test_explicit_chain_with_valid_providers_wins(self) -> None:
+        # `claude` normalizes to `sonnet`; explicit chain beats the tier.
         env = {
             "CLAUDE_PLAN_REVIEW_CHAIN": "claude,codex",
             "CLAUDE_PLAN_REVIEW_TIER": "fast",
         }
         with mock.patch.dict(os.environ, env, clear=True):
-            assert chain.resolve_chain() == ["claude", "codex"]
+            assert chain.resolve_chain() == ["sonnet", "codex"]
 
     def test_explicit_chain_with_only_invalid_falls_back_to_tier(self) -> None:
         env = {
@@ -158,28 +160,28 @@ class TestResolveChain:
             "CLAUDE_PLAN_REVIEW_TIER": "fast",
         }
         with mock.patch.dict(os.environ, env, clear=True):
-            assert chain.resolve_chain() == ["claude"]
+            assert chain.resolve_chain() == ["sonnet"]
 
     def test_explicit_chain_all_invalid_no_tier_falls_back_to_strict(self) -> None:
         env = {"CLAUDE_PLAN_REVIEW_CHAIN": "foo,bar"}
         with mock.patch.dict(os.environ, env, clear=True):
-            assert chain.resolve_chain() == ["codex", "gemini", "claude"]
+            assert chain.resolve_chain() == ["codex", "gemini", "opus"]
 
     def test_tier_fast(self) -> None:
         with mock.patch.dict(os.environ, {"CLAUDE_PLAN_REVIEW_TIER": "fast"}, clear=True):
-            assert chain.resolve_chain() == ["claude"]
+            assert chain.resolve_chain() == ["sonnet"]
 
     def test_tier_strict_default(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):
-            assert chain.resolve_chain() == ["codex", "gemini", "claude"]
+            assert chain.resolve_chain() == ["codex", "gemini", "opus"]
 
     def test_tier_invalid_falls_back_to_strict(self) -> None:
         with mock.patch.dict(os.environ, {"CLAUDE_PLAN_REVIEW_TIER": "loose"}, clear=True):
-            assert chain.resolve_chain() == ["codex", "gemini", "claude"]
+            assert chain.resolve_chain() == ["codex", "gemini", "opus"]
 
     def test_tier_case_insensitive(self) -> None:
         with mock.patch.dict(os.environ, {"CLAUDE_PLAN_REVIEW_TIER": "FAST"}, clear=True):
-            assert chain.resolve_chain() == ["claude"]
+            assert chain.resolve_chain() == ["sonnet"]
 
     def test_returns_fresh_list_per_call(self) -> None:
         """Callers that mutate the result must not corrupt subsequent
@@ -189,7 +191,7 @@ class TestResolveChain:
             first = chain.resolve_chain()
             first.append("local")
             second = chain.resolve_chain()
-            assert second == ["codex", "gemini", "claude"]
+            assert second == ["codex", "gemini", "opus"]
 
 
 class TestMetadataOnlyLogs:

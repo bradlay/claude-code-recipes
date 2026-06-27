@@ -27,6 +27,7 @@ _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR))
 
+from _lib import backends  # noqa: E402
 from _lib.chain import (  # noqa: E402
     PROVIDER_CMDS,
     _shadow_from_env,
@@ -35,7 +36,7 @@ from _lib.chain import (  # noqa: E402
 from _lib.probes import ProbeResult, probe_provider  # noqa: E402
 
 
-def _resolve_targets(provider: str | None) -> list[str]:
+def _resolve_targets(provider: str | None, *, online: bool = False) -> list[str]:
     if provider:
         if provider not in PROVIDER_CMDS:
             print(
@@ -44,6 +45,15 @@ def _resolve_targets(provider: str | None) -> list[str]:
             )
             sys.exit(2)
         return [provider]
+    if online:
+        # Every interactive-picker backend whose CLI is installed — used by
+        # /plan-review-loop:plan-review-backend to offer only verified-working
+        # choices. Includes local qwen when CLAUDE_PLAN_REVIEW_LOCAL_URL is set.
+        return [
+            key
+            for key in backends.picker_keys()
+            if key == "local" or shutil.which(PROVIDER_CMDS.get(key, [key])[0])
+        ]
     chain = resolve_chain()
     shadow = _shadow_from_env()
     targets: list[str] = []
@@ -87,8 +97,8 @@ def _format_human(targets: list[str], results: list[ProbeResult]) -> str:
             "  - codex:  `codex login status` / "
             "`printenv OPENAI_API_KEY | codex login --with-api-key`"
         )
-        lines.append("  - gemini: re-auth via `gemini` first run, or set GEMINI_API_KEY")
-        lines.append("  - claude: `claude --version`; refresh Claude Code login")
+        lines.append("  - gemini: ensure the `agy` CLI is installed and authenticated")
+        lines.append("  - opus/sonnet: `claude --version`; refresh Claude Code login")
         lines.append(
             "  - local:  ensure CLAUDE_PLAN_REVIEW_LOCAL_URL backend "
             "(e.g. autosre vLLM) is up and serving the expected model"
@@ -111,6 +121,11 @@ def main() -> int:
         help="Probe a single provider instead of the full chain+shadow set.",
     )
     parser.add_argument(
+        "--online",
+        action="store_true",
+        help="Probe every interactive-picker backend (opus, sonnet, codex, gemini).",
+    )
+    parser.add_argument(
         "--json",
         dest="as_json",
         action="store_true",
@@ -118,7 +133,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    targets = _resolve_targets(args.provider)
+    targets = _resolve_targets(args.provider, online=args.online)
     if not targets:
         print("no providers selected (chain + shadow are empty)", file=sys.stderr)
         return 2

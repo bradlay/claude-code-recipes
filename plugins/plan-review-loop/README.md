@@ -1,19 +1,25 @@
 # plan-review-loop
 
-Runs Codex over every plan before plan-mode is allowed to exit. Blocking
-findings (P0/P1) deny the exit; the findings come back as context so the
-next attempt has them in hand. The loop closes when the plan is clean.
+Reviews every plan before plan-mode is allowed to exit. On the first
+`ExitPlanMode` of a session it asks which backend to review with — Opus
+4.8, Sonnet 4.6, codex (`gpt-5.5`), or Gemini 3.1 Pro (via the `agy`
+gateway) — offering only backends that pass a live auth/model probe.
+Blocking findings (P0/P1) deny the exit; the findings come back as
+context so the next attempt has them in hand. The loop closes when the
+plan is clean. Under `autoswe` runs the review happens locally against the
+qwen vLLM with no prompt.
 
 ## Read first: data egress
 
 This plugin sends plan content to external CLIs. Don't install it on
 machines where that's a problem.
 
-- The full plan markdown is sent to whichever provider runs first in
-  `CLAUDE_PLAN_REVIEW_CHAIN`. Default chain is `codex,gemini,claude`:
-  `codex` (OpenAI Codex CLI, `gpt-5.5` at `xhigh` reasoning) is the
-  primary; `gemini` (Google Gemini CLI) and `claude` (Anthropic Claude
-  CLI) are fallbacks tried in order if the previous one fails.
+- The full plan markdown is sent to the selected backend's CLI: `codex`
+  (OpenAI Codex CLI, `gpt-5.5` at `xhigh`), `agy` (multi-model gateway,
+  serving Gemini 3.1 Pro), or `claude` (Anthropic Claude CLI, for the
+  Opus/Sonnet self-review legs). Under `autoswe` the plan goes only to the
+  local OpenAI-compatible vLLM at `CLAUDE_PLAN_REVIEW_LOCAL_URL`, not to
+  any cloud CLI.
 - On re-review, prior findings are sent too.
 - Hooks run with your local user permissions.
 - Don't use this on plans containing secrets, customer data, or
@@ -35,10 +41,13 @@ macOS and Linux. Hook entry points are POSIX shell launchers.
 - `python3` (3.10+) on `PATH`. If missing, the launcher denies plan
   exit with a remediation message; set `CLAUDE_PLAN_REVIEW_FAIL_OPEN=1`
   to bypass.
-- `codex` CLI on `PATH`. Required by the default chain. If missing, the
-  hook tries the next provider; if all fail, denies (same bypass).
-- `gemini` and `claude` CLIs are optional fallbacks. Only consulted
-  when listed in `CLAUDE_PLAN_REVIEW_CHAIN` (they are by default).
+- At least one backend CLI on `PATH`: `claude` (for the Opus 4.8 /
+  Sonnet 4.6 self-review legs), `codex` (`gpt-5.5`), or `agy` (the gateway
+  serving Gemini 3.1 Pro). The picker offers only backends whose CLI is
+  installed and whose auth/model probe passes; if none are usable the hook
+  denies (bypass with `CLAUDE_PLAN_REVIEW_FAIL_OPEN=1`).
+- For `autoswe`/local review, an OpenAI-compatible endpoint at
+  `CLAUDE_PLAN_REVIEW_LOCAL_URL` (e.g. the autosre vLLM).
 
 ## Install
 
@@ -60,22 +69,63 @@ PreToolUse hook on `ExitPlanMode`:
 2. Acquire a per-plan-path lock. Concurrent reviews on the same plan
    serialize; the second one is denied with "review already in progress
    (started Xs ago, pid Y)".
-3. Send the plan to the first provider in the chain. Try the next on
-   failure.
-4. P0/P1 findings cause a deny + findings as `additionalContext`.
+3. Resolve the review backend. If one is already chosen for the session
+   (or set via `CLAUDE_PLAN_REVIEW_CHAIN` / `CLAUDE_PLAN_REVIEW_AUTOSELECT`,
+   or forced to `local` under `autoswe`), use it. Otherwise deny once with
+   a prompt listing the probe-verified backends; pick one (via
+   `AskUserQuestion` + the printed `bin/plan-review-select` command, or
+   `/plan-review-loop:plan-review-backend`) and re-run `ExitPlanMode`. The choice is sticky
+   for the session.
+4. Send the plan to the selected backend, re-probed immediately before use.
+5. P0/P1 findings cause a deny + findings as `additionalContext`.
    P2-only causes an allow + advisory context. Clean causes an allow.
-5. On clean, all state files for the plan path are removed so the next
+6. On clean, all state files for the plan path are removed so the next
    `ExitPlanMode` starts at iteration 1.
 
-SessionStart hook: a preflight that reports missing prereqs at the start
-of each session. Cached so unchanged status doesn't re-emit.
+SessionStart hook: a preflight that probes every online backend (and
+`local`) so the picker reads a warm cache and the session opens with each
+backend's health.
+
+## Choosing a backend
+
+Backends offered in the picker (only those whose probe currently passes):
+
+| Key | Backend | Model |
+|---|---|---|
+| `opus` | self-review via `claude` | `claude-opus-4-8` |
+| `sonnet` | self-review via `claude` | `claude-sonnet-4-6` |
+| `codex` | OpenAI Codex CLI | `gpt-5.5` (xhigh) |
+| `gemini` | `agy` gateway | `Gemini 3.1 Pro (High)` |
+| `local` | OpenAI-compat (qwen) | offered + default ONLY when `CLAUDE_PLAN_REVIEW_LOCAL_URL` is set |
+
+The first `ExitPlanMode` of a session asks which to use; the choice is
+sticky. Change it any time with `/plan-review-loop:plan-review-backend` (or
+`/plan-review-loop:plan-review-backend clear` to be re-asked). Self-review (`opus`/`sonnet`)
+runs Claude in a fresh, adversarial context — it is independent of the
+planning session but shares model-family blind spots, so `codex`/`gemini`
+add an outside view. To skip the prompt entirely, set
+`CLAUDE_PLAN_REVIEW_CHAIN` or `CLAUDE_PLAN_REVIEW_AUTOSELECT`.
+
+When `CLAUDE_PLAN_REVIEW_LOCAL_URL` is set (e.g. an `autosre claude` session),
+local qwen joins the picker as the default while the cloud backends stay
+selectable. A normal session (no local URL) never sees it.
+
+Under an `autoswe` run (headless, `AUTOSWE_RUN_ID` set) the local qwen is the
+default and you are never prompted — but an explicit
+`CLAUDE_PLAN_REVIEW_CHAIN` / `CLAUDE_PLAN_REVIEW_AUTOSELECT` still wins, so a
+run can be pointed at a cloud backend. The local endpoint is proven reachable
+before the review; if it is down the run fails closed with a clear message.
 
 ## Configuration
 
 | Variable | Default | Effect |
 |---|---|---|
-| `CLAUDE_PLAN_REVIEW_CHAIN` | unset | Comma-separated provider list. Wins over `CLAUDE_PLAN_REVIEW_TIER` when at least one entry resolves to a known provider. Valid: `codex`, `gemini`, `claude`, `local`. |
-| `CLAUDE_PLAN_REVIEW_TIER` | `strict` | Tier preset used when `CLAUDE_PLAN_REVIEW_CHAIN` is unset (or all-invalid). `strict` → `codex,gemini,claude` (paid review). `fast` → `claude` only (cheap, seconds-per-review). Unknown values fall back to `strict`. |
+| `CLAUDE_PLAN_REVIEW_CHAIN` | unset | Comma-separated backend list; **bypasses the interactive picker**. Valid keys: `opus`, `sonnet`, `codex`, `gemini`, `local` (legacy `claude`→`sonnet`, `agy`→`gemini` accepted). Wins over `CLAUDE_PLAN_REVIEW_TIER`. |
+| `CLAUDE_PLAN_REVIEW_AUTOSELECT` | unset | A single backend key reviewed non-interactively (skips the picker, never prompts). |
+| `CLAUDE_PLAN_REVIEW_TIER` | `strict` | Tier preset used when neither the picker nor an explicit chain applies. `strict` → `codex,gemini,opus`. `fast` → `sonnet` only (cheap, seconds-per-review). Unknown values fall back to `strict`. |
+| `CLAUDE_PLAN_REVIEW_OPUS_MODEL` / `_SONNET_MODEL` / `_CODEX_MODEL` / `_AGY_MODEL` | per backend | Override a backend's model id. Defaults: `claude-opus-4-8`, `claude-sonnet-4-6`, `gpt-5.5`, `Gemini 3.1 Pro (High)`. |
+| `CLAUDE_PLAN_REVIEW_LOCAL_URL` | `http://localhost:8010` | OpenAI-compatible base URL for the `local` backend (autoswe points this at the qwen vLLM). |
+| `CLAUDE_PLAN_REVIEW_LOCAL_FOCUSED` | unset | Set to `1` for a tighter, shorter local-review system prompt (autoswe sets this). |
 | `CLAUDE_PLAN_REVIEW_FAIL_OPEN` | unset | Set to `1` to allow plan exit when prereqs fail or all providers fail. Default denies. |
 | `CLAUDE_PLAN_REVIEW_LOGS_METADATA_ONLY` | unset | Set to `1` to drop full prompt/stdout/stderr from per-cycle logs and keep only metadata. Default writes everything. |
 | `CLAUDE_PLAN_REVIEW_PLAN_MAX_AGE_SECONDS` | `3600` | Max age of plans considered when falling back to "newest plan in plans dir". |

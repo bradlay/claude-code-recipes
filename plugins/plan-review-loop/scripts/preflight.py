@@ -24,7 +24,7 @@ _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR))
 
-from _lib import _io, paths  # noqa: E402
+from _lib import _io, backends, paths  # noqa: E402
 from _lib._shadow_signature import current_shadow_config_signature  # noqa: E402
 from _lib.chain import PROVIDER_CMDS, _shadow_from_env, resolve_chain  # noqa: E402
 from _lib.probes import ProbeResult, probe_provider  # noqa: E402
@@ -158,6 +158,15 @@ def _build_report() -> dict[str, Any]:
         if prov not in probe_targets and (
             prov == "local" or shutil.which(PROVIDER_CMDS.get(prov, [prov])[0])
         ):
+            probe_targets.append(prov)
+
+    # Warm probes for every online picker backend (+ local) whose CLI is
+    # installed, not just the active chain — so the interactive picker reads a
+    # fresh cache and SessionStart surfaces each backend's health.
+    for prov in [*backends.ONLINE_KEYS, "local"]:
+        if prov in probe_targets:
+            continue
+        if prov == "local" or shutil.which(PROVIDER_CMDS.get(prov, [prov])[0]):
             probe_targets.append(prov)
 
     chain_probe_failures: list[str] = []

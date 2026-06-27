@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -26,8 +28,135 @@ _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR))
 
-from _lib import _io, paths  # noqa: E402
+from _lib import _io, backends, paths, picker, probes  # noqa: E402
+from _lib._io import HookInvocation  # noqa: E402
 from _lib.runner import ReviewOutcome, review_plan  # noqa: E402
+
+
+@dataclass
+class ChainDecision:
+    """How the hook should source the review backend for this invocation.
+
+    kind:
+      proceed -> run review_plan(chain=chain) (chain=None uses the default
+                 resolver / tier / explicit CLAUDE_PLAN_REVIEW_CHAIN)
+      deny    -> emit a deny with reason+context (picker prompt or loop-guard)
+      fail    -> fail-open-or-closed per CLAUDE_PLAN_REVIEW_FAIL_OPEN
+    """
+
+    kind: str
+    chain: list[str] | None = None
+    reason: str = ""
+    context: str = ""
+    health: str = ""
+
+
+def _env(name: str) -> str:
+    return os.environ.get(name, "").strip()
+
+
+def _decide_chain(inv: HookInvocation) -> ChainDecision:
+    """Resolve which backend reviews this plan, surfacing the interactive
+    picker when online and unselected. Non-interactive contexts (nested,
+    autoswe, explicit chain/tier/autoselect) never prompt."""
+    # Nested (probe/review child) — keep default behavior, never prompt.
+    if _env("CLAUDE_PLAN_REVIEW_NESTED"):
+        return ChainDecision("proceed", chain=None)
+
+    # Explicit backend selection (CHAIN / AUTOSELECT) is honored everywhere,
+    # INCLUDING under autoswe: qwen is the autoswe default, not a hard lock, so
+    # an operator can point an autoswe run at a cloud backend via env. These
+    # are non-interactive, which is required because the autonomous autoswe
+    # loop has no human to answer an interactive picker.
+    if _env("CLAUDE_PLAN_REVIEW_CHAIN"):
+        return ChainDecision("proceed", chain=None)  # resolve_chain normalizes
+    autoselect = _env("CLAUDE_PLAN_REVIEW_AUTOSELECT")
+    if autoselect:
+        key = backends.normalize_key(autoselect)
+        if key is not None:
+            return ChainDecision("proceed", chain=[key])
+
+    # autoswe default: local qwen, proven reachable synchronously, no prompt.
+    # Headless runs may never have warmed the SessionStart probe cache and a
+    # stale positive would hang the run, so force a fresh reachability check.
+    if _env("AUTOSWE_RUN_ID"):
+        result = probes.probe_provider("local", force=True)
+        if result.ok:
+            return ChainDecision("proceed", chain=["local"])
+        url = _env("CLAUDE_PLAN_REVIEW_LOCAL_URL") or "(unset)"
+        return ChainDecision(
+            "fail",
+            reason=(
+                f"autoswe plan review: local vLLM unreachable at {url} "
+                f"({result.detail}). Bring the local model up, or set "
+                "CLAUDE_PLAN_REVIEW_CHAIN / CLAUDE_PLAN_REVIEW_AUTOSELECT to "
+                "review this autoswe run with a different backend."
+            ),
+            health="autoswe_local_unreachable",
+        )
+
+    # Tier preset — non-interactive fallback for non-autoswe sessions.
+    if _env("CLAUDE_PLAN_REVIEW_TIER"):
+        return ChainDecision("proceed", chain=None)
+
+    # Sticky per-session selection — re-probe the chosen backend right before
+    # the review so an auth that expired since the pick is caught here.
+    selection = picker.read_selection(inv.session_id)
+    if selection is not None:
+        key = str(selection["backend_key"])
+        if probes.probe_provider(key, force=True).ok:
+            return ChainDecision("proceed", chain=[key])
+        picker.clear_selection(inv.session_id)  # stale auth — re-ask below
+
+    # No usable selection: surface only backends verified working right now.
+    available = probes.available_backends()
+    _io.log(
+        inv,
+        "picker: local_url="
+        + ("set" if _env("CLAUDE_PLAN_REVIEW_LOCAL_URL") else "unset")
+        + f" keys={backends.picker_keys()} available={[r.name for r in available]}",
+    )
+    if not available:
+        return ChainDecision(
+            "fail",
+            reason=(
+                "no plan-review backend is verified working (every online "
+                "backend probe failed). Fix auth/model access for one of: "
+                f"{', '.join(backends.ONLINE_KEYS)}, or set "
+                "CLAUDE_PLAN_REVIEW_FAIL_OPEN=1 to bypass."
+            ),
+            health="no_backend_available",
+        )
+
+    attempts = picker.record_attempt(inv.session_id)
+    if attempts > picker.MAX_PICKER_ATTEMPTS:
+        # Loop guard: fail closed (deliberate-choice requirement preserved);
+        # never silently auto-pick a default.
+        return ChainDecision(
+            "deny",
+            reason="plan-review backend still not selected; failing closed.",
+            context=(
+                f"No backend was selected after {attempts - 1} prompt(s). Pick "
+                "one with the /plan-review-loop:plan-review-backend command, or set "
+                "CLAUDE_PLAN_REVIEW_AUTOSELECT=<key> (or "
+                "CLAUDE_PLAN_REVIEW_CHAIN=<key>) for a non-interactive default. "
+                f"Backends: {', '.join(backends.ONLINE_KEYS)}."
+            ),
+            health="picker_unselected",
+        )
+
+    select_bin = str(_THIS_DIR.parent / "bin" / "plan-review-select")
+    return ChainDecision(
+        "deny",
+        reason="Select a plan-review backend before exiting plan mode.",
+        context=picker.build_picker_instruction(
+            inv.session_id,
+            available,
+            select_bin=select_bin,
+            data_dir=str(paths.data_dir()),
+        ),
+        health="picker_prompt",
+    )
 
 
 def _write_health(outcome_status: str, *, provider: str = "", error: str = "") -> None:
@@ -102,9 +231,20 @@ def main() -> int:
         plan_size = 0
     _io.log(inv, f"reviewing: {plan_path} ({plan_size} bytes)")
 
+    decision = _decide_chain(inv)
+    if decision.kind == "deny":
+        _write_health(decision.health)
+        _io.log(inv, f"backend decision: deny ({decision.health})")
+        return _io.emit_pretooluse_deny(decision.reason, additional_context=decision.context)
+    if decision.kind == "fail":
+        _write_health(decision.health)
+        _io.log(inv, f"backend decision: fail ({decision.health})", level="warn")
+        return _io.fail_open_or_closed_pretooluse(inv, decision.reason)
+    _io.log(inv, f"backend decision: proceed chain={decision.chain}")
+
     start = time.monotonic()
     try:
-        outcome: ReviewOutcome = review_plan(plan_file)
+        outcome: ReviewOutcome = review_plan(plan_file, chain=decision.chain)
     except Exception as exc:
         elapsed = time.monotonic() - start
         _io.log(inv, f"review_plan unexpected error after {elapsed:.1f}s: {exc}", level="error")
