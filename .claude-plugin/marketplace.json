@@ -8,7 +8,7 @@
     {
       "name": "plan-review-loop",
       "source": "./plugins/plan-review-loop",
-      "description": "Closed-loop Codex review on ExitPlanMode. Denies plan exit on P0/P1 findings; loop closes when the plan is clean."
+      "description": "Closed-loop plan review on ExitPlanMode. Pick a backend per session (Opus 4.8, Sonnet 4.6, codex, or Gemini 3.1 Pro via agy) — only probe-verified ones are offered; autoswe reviews locally. Denies plan exit on P0/P1 findings; loop closes when the plan is clean."
     },
     {
       "name": "bash-guard",
