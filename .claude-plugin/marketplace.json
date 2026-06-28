@@ -41,6 +41,11 @@
       "description": "Stop hook that surfaces a session-end completion checklist (uncommitted changes, branch ahead of remote, repo-type-specific test/deploy hints). Blocks the stop when there are uncommitted changes or unpushed commits."
     },
     {
+      "name": "hermes-tweet",
+      "source": "./plugins/hermes-tweet",
+      "description": "Claude skill wrapper for the native Hermes Agent X/Twitter plugin. Guides read-first X workflows and action-gated publishing through Hermes Tweet."
+    },
+    {
       "name": "putty-bridge",
       "source": "./plugins/putty-bridge",
       "description": "Generate a Windows PuTTY .reg + tmux snippet for remote tmux + Claude Code: UTF-8 + UTF8linedraw, true colour, deuteranopia-friendly dark palette, native copy/paste (right-click pastes, Shift+drag in tmux mouse-mode auto-copies via PuTTY's local selection), 50k scrollback, secure defaults. No PuTTY GUI clicks."
