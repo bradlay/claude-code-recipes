@@ -359,7 +359,7 @@ Review this implementation plan. Identify issues by severity:
 - P1 (High): Will cause incorrect behavior or significant technical debt
 - P2 (Medium): Design improvements or missing edge cases
 
-Focus on: completeness, correctness, dependency ordering, security, risk.
+Focus on: completeness, correctness, dependency ordering, security, risk, and execution fit (if steps name an executor model tier, flag any step whose tier is clearly too weak or needlessly strong for its difficulty).
 Only flag genuine issues with concrete recommendations.
 
 If you need clarification on any aspect of the plan before you can fully review it,
