@@ -42,8 +42,8 @@ ignore = [
 ]
 "plugins/plan-review-loop/scripts/_lib/local_provider.py" = [
     # Same rationale as runner.py: the JSON schema line in the system
-    # prompt is byte-identical to the upstream prompt; reflowing it
-    # changes review behavior.
+    # prompt is the canonical copy; reflowing it changes review behavior,
+    # so the long line is kept intact deliberately.
     "E501",
 ]
 "tests/*" = [
