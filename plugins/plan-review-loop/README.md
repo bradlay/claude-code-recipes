@@ -2,7 +2,7 @@
 
 Reviews every plan before plan-mode is allowed to exit. On the first
 `ExitPlanMode` of a session it asks which backend to review with — Opus
-4.8, Sonnet 4.6, codex (`gpt-5.5`), or Gemini 3.1 Pro (via the `agy`
+4.8, Sonnet 5, codex (`gpt-5.5`), or Gemini 3.1 Pro (via the `agy`
 gateway) — offering only backends that pass a live auth/model probe.
 Blocking findings (P0/P1) deny the exit; the findings come back as
 context so the next attempt has them in hand. The loop closes when the
@@ -42,7 +42,7 @@ macOS and Linux. Hook entry points are POSIX shell launchers.
   exit with a remediation message; set `CLAUDE_PLAN_REVIEW_FAIL_OPEN=1`
   to bypass.
 - At least one backend CLI on `PATH`: `claude` (for the Opus 4.8 /
-  Sonnet 4.6 self-review legs), `codex` (`gpt-5.5`), or `agy` (the gateway
+  Sonnet 5 self-review legs), `codex` (`gpt-5.5`), or `agy` (the gateway
   serving Gemini 3.1 Pro). The picker offers only backends whose CLI is
   installed and whose auth/model probe passes; if none are usable the hook
   denies (bypass with `CLAUDE_PLAN_REVIEW_FAIL_OPEN=1`).
@@ -93,7 +93,7 @@ Backends offered in the picker (only those whose probe currently passes):
 | Key | Backend | Model |
 |---|---|---|
 | `opus` | self-review via `claude` | `claude-opus-4-8` |
-| `sonnet` | self-review via `claude` | `claude-sonnet-4-6` |
+| `sonnet` | self-review via `claude` | `claude-sonnet-5` |
 | `codex` | OpenAI Codex CLI | `gpt-5.5` (xhigh) |
 | `gemini` | `agy` gateway | `Gemini 3.1 Pro (High)` |
 | `local` | OpenAI-compat (qwen) | offered + default ONLY when `CLAUDE_PLAN_REVIEW_LOCAL_URL` is set |
@@ -123,7 +123,7 @@ before the review; if it is down the run fails closed with a clear message.
 | `CLAUDE_PLAN_REVIEW_CHAIN` | unset | Comma-separated backend list; **bypasses the interactive picker**. Valid keys: `opus`, `sonnet`, `codex`, `gemini`, `local` (legacy `claude`→`sonnet`, `agy`→`gemini` accepted). Wins over `CLAUDE_PLAN_REVIEW_TIER`. |
 | `CLAUDE_PLAN_REVIEW_AUTOSELECT` | unset | A single backend key reviewed non-interactively (skips the picker, never prompts). |
 | `CLAUDE_PLAN_REVIEW_TIER` | `strict` | Tier preset used when neither the picker nor an explicit chain applies. `strict` → `codex,gemini,opus`. `fast` → `sonnet` only (cheap, seconds-per-review). Unknown values fall back to `strict`. |
-| `CLAUDE_PLAN_REVIEW_OPUS_MODEL` / `_SONNET_MODEL` / `_CODEX_MODEL` / `_AGY_MODEL` | per backend | Override a backend's model id. Defaults: `claude-opus-4-8`, `claude-sonnet-4-6`, `gpt-5.5`, `Gemini 3.1 Pro (High)`. |
+| `CLAUDE_PLAN_REVIEW_OPUS_MODEL` / `_SONNET_MODEL` / `_CODEX_MODEL` / `_AGY_MODEL` | per backend | Override a backend's model id. Defaults: `claude-opus-4-8`, `claude-sonnet-5`, `gpt-5.5`, `Gemini 3.1 Pro (High)`. |
 | `CLAUDE_PLAN_REVIEW_LOCAL_URL` | `http://localhost:8010` | OpenAI-compatible base URL for the `local` backend (autoswe points this at the qwen vLLM). |
 | `CLAUDE_PLAN_REVIEW_LOCAL_FOCUSED` | unset | Set to `1` for a tighter, shorter local-review system prompt (autoswe sets this). |
 | `CLAUDE_PLAN_REVIEW_FAIL_OPEN` | unset | Set to `1` to allow plan exit when prereqs fail or all providers fail. Default denies. |
