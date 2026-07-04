@@ -9,7 +9,7 @@
 #
 # Keys are the chain currency and the picker choices:
 #   opus    -> claude --print --model claude-opus-4-8   (self-review)
-#   sonnet  -> claude --print --model claude-sonnet-4-6 (self-review)
+#   sonnet  -> claude --print --model claude-sonnet-5   (self-review)
 #   codex   -> codex exec (gpt-5.5, xhigh)
 #   gemini  -> agy -p --model "Gemini 3.1 Pro (High)"   (gateway; replaces
 #              the dead gemini CLI — note the binary is `agy`, so a legacy
@@ -31,7 +31,7 @@ _LOCAL_PROVIDER = str(Path(__file__).resolve().parent / "local_provider.py")
 # CLAUDE_PLAN_REVIEW_CHAIN values working after the gemini->agy migration
 # and the claude->opus/sonnet split.
 LEGACY_ALIASES: dict[str, str] = {
-    "claude": "sonnet",  # old single claude leg defaulted to sonnet-4-6
+    "claude": "sonnet",  # old single claude leg maps to the sonnet backend
     "agy": "gemini",  # the binary name, in case someone spells it that way
 }
 
@@ -114,11 +114,11 @@ REGISTRY: dict[str, Backend] = {
     ),
     "sonnet": Backend(
         key="sonnet",
-        label="Sonnet 4.6 (self-review)",
+        label="Sonnet 5 (self-review)",
         binary="claude",
         online=True,
         model_env="CLAUDE_PLAN_REVIEW_SONNET_MODEL",
-        model_default="claude-sonnet-4-6",
+        model_default="claude-sonnet-5",
         _run=_claude_run,
         _probe=_claude_run,
     ),

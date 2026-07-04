@@ -37,7 +37,7 @@ class TestArgvConstruction:
                 "claude",
                 "--print",
                 "--model",
-                "claude-sonnet-4-6",
+                "claude-sonnet-5",
             ]
 
     def test_gemini_runs_agy_binary(self) -> None:
