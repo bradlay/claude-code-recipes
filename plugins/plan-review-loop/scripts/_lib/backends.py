@@ -10,7 +10,7 @@
 # Keys are the chain currency and the picker choices:
 #   opus    -> claude --print --model claude-opus-4-8   (self-review)
 #   sonnet  -> claude --print --model claude-sonnet-5   (self-review)
-#   codex   -> codex exec (gpt-5.5, xhigh)
+#   codex   -> codex exec (gpt-5.6-sol, xhigh)
 #   gemini  -> agy -p --model "Gemini 3.1 Pro (High)"   (gateway; replaces
 #              the dead gemini CLI — note the binary is `agy`, so a legacy
 #              CLAUDE_PLAN_REVIEW_CHAIN=gemini transparently routes here)
@@ -124,11 +124,11 @@ REGISTRY: dict[str, Backend] = {
     ),
     "codex": Backend(
         key="codex",
-        label="codex (gpt-5.5)",
+        label="codex (gpt-5.6-sol)",
         binary="codex",
         online=True,
         model_env="CLAUDE_PLAN_REVIEW_CODEX_MODEL",
-        model_default="gpt-5.5",
+        model_default="gpt-5.6-sol",
         _run=_codex_run,
         _probe=_codex_probe,
     ),
