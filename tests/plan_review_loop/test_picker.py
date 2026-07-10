@@ -88,7 +88,7 @@ class TestInstruction:
     def test_instruction_is_self_contained(self) -> None:
         available = [
             ProbeResult(name="opus", ok=True, model="claude-opus-4-8", last_probed=0.0),
-            ProbeResult(name="codex", ok=True, model="gpt-5.5", last_probed=0.0),
+            ProbeResult(name="codex", ok=True, model="gpt-5.6-sol", last_probed=0.0),
         ]
         text = picker.build_picker_instruction(
             "sess-123",

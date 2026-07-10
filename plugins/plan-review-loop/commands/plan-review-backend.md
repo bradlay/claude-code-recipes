@@ -1,5 +1,5 @@
 ---
-description: "Choose (or change) which backend reviews your plans on ExitPlanMode: Opus 4.8, Sonnet 5, codex (gpt-5.5), or Gemini 3.1 Pro. Only backends whose probe currently passes are offered."
+description: "Choose (or change) which backend reviews your plans on ExitPlanMode: Opus 4.8, Sonnet 5, codex (gpt-5.6-sol), or Gemini 3.1 Pro. Only backends whose probe currently passes are offered."
 argument-hint: "[clear]"
 allowed-tools: [Bash, AskUserQuestion]
 ---
@@ -44,7 +44,7 @@ The user invoked this command with: `$ARGUMENTS`
    `sonnet`, `codex`, `gemini`). If none pass, report that and stop.
 
 4. Use **AskUserQuestion** to ask which backend to use, one option per
-   verified key (label them: Opus 4.8 / Sonnet 5 / codex gpt-5.5 /
+   verified key (label them: Opus 4.8 / Sonnet 5 / codex gpt-5.6-sol /
    Gemini 3.1 Pro).
 
 5. Persist the choice (replace `<key>` with the chosen key):
