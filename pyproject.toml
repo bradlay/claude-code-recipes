@@ -25,6 +25,7 @@ ignore = [
     "PLR0912",  # too many branches; same reason
     "PLR0913",  # too many args; chain.py's _save_cycle_log is fine
     "PLR0915",  # too many statements
+    "PLR0917",  # too many positional args; same _save_cycle_log call, stable since ruff 0.16
     "PLR2004",  # magic value comparisons
     "S101",    # asserts (we don't use them anyway, but keep flexibility)
     "S603",    # subprocess without shell=False; we always set check=False explicitly
