@@ -1,0 +1,16 @@
+# Pinned CI toolchain. Used as a pip *constraints* file (`pip install -c`), so
+# each job still installs only the tools it needs while the versions live in
+# one place.
+#
+# Why pins and not floors: these tools gate the build, and a new stable lint or
+# type rule lands as a red build on a commit that didn't touch the code. That
+# happened with ruff 0.16, which promoted PLR0917 out of preview. Pinned here,
+# an upgrade arrives as a Dependabot PR you can read before it can break main.
+#
+# Versions below are exactly those of the last green run on dev (CI #31258319019).
+
+ruff==0.16.2
+mypy==2.3.0
+types-PyYAML==6.0.12.20260724
+pytest==9.1.1
+PyYAML==6.0.3
