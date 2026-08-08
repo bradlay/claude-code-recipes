@@ -37,7 +37,7 @@ class TestArgvConstruction:
                 "claude",
                 "--print",
                 "--model",
-                "claude-sonnet-4-6",
+                "claude-sonnet-5",
             ]
 
     def test_gemini_runs_agy_binary(self) -> None:
@@ -51,7 +51,7 @@ class TestArgvConstruction:
             argv = backends.REGISTRY["codex"].run_argv()
             assert argv[0] == "codex"
             assert any("xhigh" in a for a in argv)
-            assert any(a == 'model="gpt-5.5"' for a in argv)
+            assert any(a == 'model="gpt-5.6-sol"' for a in argv)
 
     def test_codex_probe_uses_low_effort(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):
@@ -76,7 +76,7 @@ class TestModelOverrides:
 
     def test_blank_override_falls_back_to_default(self) -> None:
         with mock.patch.dict(os.environ, {"CLAUDE_PLAN_REVIEW_CODEX_MODEL": "  "}, clear=True):
-            assert backends.REGISTRY["codex"].model() == "gpt-5.5"
+            assert backends.REGISTRY["codex"].model() == "gpt-5.6-sol"
 
 
 class TestNormalizeKey:
