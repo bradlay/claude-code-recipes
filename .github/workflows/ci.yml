@@ -4,7 +4,7 @@ on:
   push:
     branches: [dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 permissions:
   contents: read
@@ -19,11 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Install ruff
-        run: pip install 'ruff>=0.8'
+        run: pip install -c requirements-ci.txt ruff
       - name: ruff check
         run: ruff check plugins/
       - name: ruff format --check
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Install mypy + types
@@ -44,7 +44,7 @@ jobs:
         # (untyped-decorator) — an error that surfaces only where pytest is
         # absent. Dev machines always have it, so check.sh stays green while CI
         # reds. Install it here so CI mypy sees the identical types.
-        run: pip install 'mypy>=1.13' 'types-PyYAML>=6' 'pytest>=8'
+        run: pip install -c requirements-ci.txt mypy types-PyYAML pytest
       # Discover plugins from the tree so a new plugins/<name>/ is type-checked
       # automatically — no per-plugin step to add and forget. scripts/check.sh
       # uses the identical rule, keeping the local pre-push gate in lockstep.
@@ -63,11 +63,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Install pytest + plugin runtime deps
-        run: pip install 'pytest>=8' 'pyyaml>=6'
+        run: pip install -c requirements-ci.txt pytest pyyaml
       # Discover test suites from the tree (one per plugins/<name>/), mirroring
       # scripts/check.sh, so adding a plugin needs no edit here.
       - name: pytest per plugin
@@ -106,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Parse all JSON manifests
@@ -147,7 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: "No try/except <X>: pass patterns in plugin scripts"
@@ -198,11 +198,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Install runtime deps
-        run: pip install 'pyyaml>=6'
+        run: pip install -c requirements-ci.txt pyyaml
       - name: Drive bash-guard with representative commands
         run: |
           export CLAUDE_PLUGIN_DATA=$(mktemp -d)
@@ -239,7 +239,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Preflight runs and emits valid JSON
