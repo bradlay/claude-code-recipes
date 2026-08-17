@@ -31,7 +31,7 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped, unused-ignore]
 
-from . import identity, paths
+from . import identity, paths, wrappers
 
 _SECURE_FILE_MODE = 0o600
 
@@ -650,33 +650,70 @@ def evaluate_chain(
 
         effective = resolve_config_for(target_dir, config)
         rules = effective.get("rules", []) or []
-        pattern_command = normalize_for_patterns(sub_command)
 
-        for rule in rules:
-            if not _rule_matches(rule, pattern_command):
+        # Evaluate the sub-command as written AND (when enabled and
+        # different) with pass-through wrappers stripped, so ``mise exec
+        # -- git push`` or ``sh -c "git stash"`` is judged by the same
+        # rules as the bare inner command. The most restrictive outcome
+        # across the forms wins: a wrapper must never weaken a decision,
+        # and an allow-rule match on the wrapped form cannot mask a deny
+        # on the real program inside it.
+        forms = [sub_command]
+        if base_settings.get("strip_wrappers", True):
+            stripped = wrappers.strip_wrappers(sub_command)
+            if stripped and stripped != sub_command:
+                forms.append(stripped)
+
+        outcome: tuple[str, str] | None = None
+        for form in forms:
+            hit = _first_rule_decision(
+                rules, normalize_for_patterns(form), exempt_cats, target_dir
+            )
+            if hit is None:
                 continue
+            if outcome is None or _MORE_RESTRICTIVE[hit[0]] > _MORE_RESTRICTIVE[outcome[0]]:
+                outcome = hit
 
-            # Category-gated exemption for deploy worktrees: when the
-            # rule is tagged with a category that the operator opted
-            # into via settings.exempt_categories_for_deploy_worktree
-            # AND the effective target is inside a ``repos/<name>``
-            # deploy worktree, skip this rule and keep looking. Other
-            # rules (filesystem catastrophes, history rewrites) still
-            # fire because they live in different categories.
-            if (
-                exempt_cats
-                and rule.get("category") in exempt_cats
-                and _is_deploy_worktree(target_dir)
-            ):
-                continue
-
-            decision = rule.get("decision", "deny")
+        if outcome is not None:
+            decision, reason = outcome
             if decision == "allow":
                 return ("allow", "", "")
-            reason = rule.get("reason", "Blocked by guard")
             return (decision, reason, sub_command)
 
     return ("allow", "", "")
+
+
+_MORE_RESTRICTIVE = {"allow": 0, "ask": 1, "deny": 2}
+
+
+def _first_rule_decision(
+    rules: list[dict[str, Any]],
+    pattern_command: str,
+    exempt_cats: set[str],
+    target_dir: Path | None,
+) -> tuple[str, str] | None:
+    """First-match-wins rule walk for one command form.
+
+    Returns ``(decision, reason)`` for the first matching rule, or None
+    when nothing matches. Category-gated deploy-worktree exemption: a
+    matching rule whose category the operator exempted is skipped when
+    the effective target is inside a ``repos/<name>`` deploy worktree,
+    so other categories (filesystem catastrophes, history rewrites)
+    still fire there.
+    """
+    for rule in rules:
+        if not _rule_matches(rule, pattern_command):
+            continue
+        if (
+            exempt_cats
+            and rule.get("category") in exempt_cats
+            and _is_deploy_worktree(target_dir)
+        ):
+            continue
+        decision = rule.get("decision", "deny")
+        reason = rule.get("reason", "Blocked by guard")
+        return (decision, "" if decision == "allow" else reason)
+    return None
 
 
 def evaluate_rules(command: str, config: dict[str, Any]) -> tuple[str, str]:
