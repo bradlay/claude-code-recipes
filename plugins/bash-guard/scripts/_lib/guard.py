@@ -126,9 +126,45 @@ def load_rules() -> dict[str, Any]:
         for key, value in default_settings.items():
             config["settings"].setdefault(key, value)
 
+    _expand_pattern_placeholders(config)
+
     _CACHE["config"] = config
     _CACHE["key"] = cache_key
     return config
+
+
+_PLACEHOLDER_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
+
+
+def _expand_pattern_placeholders(config: dict[str, Any]) -> None:
+    """Expand ``{setting_name}`` placeholders in rule patterns.
+
+    A placeholder whose name matches a LIST-valued setting expands to a
+    non-capturing alternation of the escaped values, so
+    ``checkout\\s+({protected_branches})`` with
+    ``protected_branches: [main, master]`` becomes
+    ``checkout\\s+((?:main|master))``. This makes the settings comment
+    that always promised this behaviour true. An unknown or non-list
+    placeholder is left as written: the literal ``{name}`` will then
+    simply never match a real command, which fails safe for allow rules
+    and is caught by rule tests for deny rules.
+    """
+
+    def _expand(text: str, settings: dict[str, Any]) -> str:
+        def _sub(m: re.Match[str]) -> str:
+            values = settings.get(m.group(1))
+            if isinstance(values, list) and values:
+                return "(?:" + "|".join(re.escape(str(v)) for v in values) + ")"
+            return m.group(0)
+
+        return _PLACEHOLDER_RE.sub(_sub, text)
+
+    settings = config.get("settings", {}) or {}
+    for rule in config.get("rules", []) or []:
+        for key in ("pattern", "extra_search"):
+            value = rule.get(key)
+            if isinstance(value, str) and "{" in value:
+                rule[key] = _expand(value, settings)
 
 
 # ----------------------------------------------------------------------

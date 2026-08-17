@@ -165,6 +165,49 @@ class TestCategoryScopes:
         decision, _, _ = guard.evaluate_chain("git stash", config, None)
         assert decision == "deny"
 
+    def test_placeholder_expands_from_list_setting(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = _config_from(
+            tmp_path,
+            monkeypatch,
+            dedent(
+                """\
+                version: "t"
+                settings:
+                  protected_branches: [main, master]
+                rules:
+                  - id: checkout-protected
+                    pattern: '^git\\s+checkout\\s+({protected_branches})\\b'
+                    decision: deny
+                    reason: "Stay off protected branches."
+                """
+            ),
+        )
+        assert guard.evaluate_chain("git checkout main", config, None)[0] == "deny"
+        assert guard.evaluate_chain("git checkout master", config, None)[0] == "deny"
+        assert guard.evaluate_chain("git checkout feature", config, None)[0] == "allow"
+
+    def test_unknown_placeholder_left_literal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = _config_from(
+            tmp_path,
+            monkeypatch,
+            dedent(
+                """\
+                version: "t"
+                settings: {}
+                rules:
+                  - id: bad-placeholder
+                    pattern: '^git\\s+checkout\\s+({no_such_setting})\\b'
+                    decision: deny
+                    reason: "x"
+                """
+            ),
+        )
+        assert guard.evaluate_chain("git checkout main", config, None)[0] == "allow"
+
     def test_rule_level_scope_overrides_category(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
