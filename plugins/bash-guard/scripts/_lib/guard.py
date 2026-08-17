@@ -620,6 +620,7 @@ def evaluate_chain(
     base_settings = config.get("settings", {}) or {}
     exempt_cats = set(base_settings.get("exempt_categories_for_deploy_worktree") or [])
     identity_bindings = base_settings.get("identity_bindings") or {}
+    category_scopes = base_settings.get("category_scopes") or {}
 
     # Setting a blocked environment variable is itself a denied action.
     # This replaces the removed CLAUDE_BASH_GUARD_FAIL_OPEN bypass:
@@ -689,7 +690,8 @@ def evaluate_chain(
         outcome: tuple[str, str] | None = None
         for form in forms:
             hit = _first_rule_decision(
-                rules, normalize_for_patterns(form), exempt_cats, target_dir
+                rules, normalize_for_patterns(form), exempt_cats, target_dir,
+                category_scopes,
             )
             if hit is None:
                 continue
@@ -710,7 +712,8 @@ def evaluate_chain(
         if base_settings.get("inspect_segments", True):
             for derived in segments.derive_inspection_segments(sub_command):
                 hit = _first_rule_decision(
-                    rules, normalize_for_patterns(derived), exempt_cats, target_dir
+                    rules, normalize_for_patterns(derived), exempt_cats, target_dir,
+                    category_scopes,
                 )
                 if hit is None or hit[0] == "allow":
                     continue
@@ -729,11 +732,50 @@ def evaluate_chain(
 _MORE_RESTRICTIVE = {"allow": 0, "ask": 1, "deny": 2}
 
 
+def _rule_in_scope(
+    rule: dict[str, Any],
+    target_dir: Path | None,
+    category_scopes: dict[str, Any],
+) -> bool:
+    """Scope gating: a rule (or its whole category) can be limited to
+    named directory trees via ``settings.category_scopes``.
+
+    ``category_scopes`` maps a scope name to a list of directory
+    prefixes. A rule opts in with ``scope: <name>`` (rule-level wins) or
+    inherits a scope whose name equals its ``category``. A scoped rule
+    fires only when the effective target dir is inside one of the
+    scope's directories. Fail-closed direction: an UNKNOWN scope name or
+    an unresolvable target dir keeps the rule ACTIVE, so a typo in
+    settings can only over-enforce, never silently disable a rule.
+    """
+    scope_name = rule.get("scope") or rule.get("category")
+    if not scope_name or scope_name not in category_scopes:
+        return True
+    dirs = category_scopes.get(scope_name) or []
+    if not dirs:
+        return True
+    if target_dir is None:
+        return True
+    try:
+        resolved = target_dir.expanduser().resolve()
+    except OSError:
+        return True
+    for entry in dirs:
+        try:
+            prefix = Path(str(entry)).expanduser().resolve()
+        except OSError:
+            continue
+        if resolved == prefix or prefix in resolved.parents:
+            return True
+    return False
+
+
 def _first_rule_decision(
     rules: list[dict[str, Any]],
     pattern_command: str,
     exempt_cats: set[str],
     target_dir: Path | None,
+    category_scopes: dict[str, Any] | None = None,
 ) -> tuple[str, str] | None:
     """First-match-wins rule walk for one command form.
 
@@ -742,7 +784,9 @@ def _first_rule_decision(
     matching rule whose category the operator exempted is skipped when
     the effective target is inside a ``repos/<name>`` deploy worktree,
     so other categories (filesystem catastrophes, history rewrites)
-    still fire there.
+    still fire there. A rule carrying ``replacement:`` has the suggested
+    command appended to its reason, so a denial teaches the sanctioned
+    alternative instead of dead-ending.
     """
     for rule in rules:
         if not _rule_matches(rule, pattern_command):
@@ -753,9 +797,16 @@ def _first_rule_decision(
             and _is_deploy_worktree(target_dir)
         ):
             continue
+        if category_scopes and not _rule_in_scope(rule, target_dir, category_scopes):
+            continue
         decision = rule.get("decision", "deny")
+        if decision == "allow":
+            return ("allow", "")
         reason = rule.get("reason", "Blocked by guard")
-        return (decision, "" if decision == "allow" else reason)
+        replacement = rule.get("replacement")
+        if replacement:
+            reason = f"{reason}\nRun instead: {replacement}"
+        return (decision, reason)
     return None
 
 
