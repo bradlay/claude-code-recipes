@@ -44,6 +44,7 @@ class HookInvocation:
     cwd: Path
     session_id: str
     stop_hook_active: bool
+    transcript_path: str | None
     raw: dict[str, Any]
     hook_script: str
 
@@ -65,11 +66,13 @@ def parse_stdin(hook_script: str) -> HookInvocation:
                 raw = parsed
 
     cwd_raw = raw.get("cwd") or str(Path.cwd())
+    transcript_raw = raw.get("transcript_path")
     inv = HookInvocation(
         event=str(raw.get("hook_event_name") or "Stop"),
         cwd=Path(cwd_raw),
         session_id=str(raw.get("session_id", "unknown")),
         stop_hook_active=bool(raw.get("stop_hook_active", False)),
+        transcript_path=transcript_raw if isinstance(transcript_raw, str) else None,
         raw=raw,
         hook_script=hook_script,
     )
