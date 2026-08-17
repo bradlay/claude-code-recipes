@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import paths
+from . import paths, redaction
 
 _RAW_JSONL_MAX_BYTES = 20 * 1024 * 1024
 _SECURE_FILE_MODE = 0o600
@@ -137,7 +137,9 @@ def _log_event(event: str, msg: str, *, level: str = "info") -> None:
 
 
 def log(inv: HookInvocation, msg: str, *, level: str = "info") -> None:
-    _log_event(inv.event, f"[{inv.session_id}] {msg}", level=level)
+    # Logged messages can carry command text; scrub secret-shaped
+    # content before it lands on disk.
+    _log_event(inv.event, f"[{inv.session_id}] {redaction.redact_secrets(msg)}", level=level)
 
 
 def _archive_raw(inv: HookInvocation) -> None:
