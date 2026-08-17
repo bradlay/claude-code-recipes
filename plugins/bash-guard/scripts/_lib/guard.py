@@ -621,6 +621,28 @@ def evaluate_chain(
     exempt_cats = set(base_settings.get("exempt_categories_for_deploy_worktree") or [])
     identity_bindings = base_settings.get("identity_bindings") or {}
 
+    # Setting a blocked environment variable is itself a denied action.
+    # This replaces the removed CLAUDE_BASH_GUARD_FAIL_OPEN bypass:
+    # instead of one exported variable silently disabling enforcement,
+    # the engine denies the export. Checked on the RAW command (before
+    # splitting or stripping) so `export V=1`, `V=1 cmd`, `env V=1 cmd`
+    # and chained forms are all caught. A false positive on a quoted
+    # mention is acceptable: deny is the safe direction.
+    blocked_vars = base_settings.get("blocked_env_vars")
+    if blocked_vars is None:
+        blocked_vars = ["CLAUDE_BASH_GUARD_FAIL_OPEN"]
+    for var in blocked_vars:
+        if re.search(
+            r"(?:^|[\s;&|(`])(?:export\s+)?" + re.escape(str(var)) + r"\s*=",
+            command,
+        ):
+            return (
+                "deny",
+                f"Setting {var} is blocked: it would disable or weaken the guard. "
+                f"Disable the plugin visibly via /plugin disable instead.",
+                command,
+            )
+
     current_cwd = cwd
 
     for sub_command in split_chained_commands(command):
