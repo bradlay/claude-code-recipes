@@ -39,6 +39,11 @@ settings:
   # Destructive ops live in different categories (filesystem,
   # git-destructive, git-history) and continue to fire everywhere.
   exempt_categories_for_deploy_worktree: ["git-protected"]
+  # Also check pipeline stages beyond the first, and the inner command
+  # of any $(...) / backtick / <(...) / >(...) substitution, against
+  # the rule list. A derived segment can only add a deny/ask, never
+  # weaken a decision already found on the sub-command as written.
+  inspect_segments: true
 
 rules:
 

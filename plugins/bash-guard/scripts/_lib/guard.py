@@ -31,7 +31,7 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped, unused-ignore]
 
-from . import identity, paths, wrappers
+from . import identity, paths, segments, wrappers
 
 _SECURE_FILE_MODE = 0o600
 
@@ -673,6 +673,27 @@ def evaluate_chain(
                 continue
             if outcome is None or _MORE_RESTRICTIVE[hit[0]] > _MORE_RESTRICTIVE[outcome[0]]:
                 outcome = hit
+
+        # Additional inspection pass: pipeline stages beyond the first,
+        # and the inner command of any command/process substitution, are
+        # each evaluated against the same rules. A guarded command can
+        # hide behind a benign leading token either way (``echo ok |
+        # git push --force`` or ``echo $(git push --force)``); the
+        # top-level chain split above never sees ``git push --force``
+        # directly because the outer token is ``echo``. This is
+        # ADDITIVE ONLY: a derived segment's ``allow`` is discarded (it
+        # must never mask a deny/ask already found on the sub-command
+        # as written), and only a derived deny/ask can raise the
+        # outcome, never lower it.
+        if base_settings.get("inspect_segments", True):
+            for derived in segments.derive_inspection_segments(sub_command):
+                hit = _first_rule_decision(
+                    rules, normalize_for_patterns(derived), exempt_cats, target_dir
+                )
+                if hit is None or hit[0] == "allow":
+                    continue
+                if outcome is None or _MORE_RESTRICTIVE[hit[0]] > _MORE_RESTRICTIVE[outcome[0]]:
+                    outcome = hit
 
         if outcome is not None:
             decision, reason = outcome
