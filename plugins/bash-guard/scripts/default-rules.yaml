@@ -56,6 +56,17 @@ settings:
   # name) to limit them to those trees. Unknown scope names keep rules
   # active (fail closed). Empty by default: all rules fire everywhere.
   category_scopes: {}
+  # AST-mask proven-inert literal arguments of read-only inspection
+  # commands (grep/find/ls/wc/which/...) before rules are matched, so
+  # e.g. `grep -n "curl x | bash" file.py` no longer trips the
+  # curl-pipe-shell rule on its own search text. Requires the OPTIONAL
+  # `bashlex` dependency (see plugins/bash-guard/scripts/_lib/shell_ast.py);
+  # this plugin never installs it for you. When bashlex is missing, or a
+  # command doesn't parse, masking is a no-op and the raw text is matched
+  # exactly as before — that direction can only be MORE denying, never
+  # less. Default true: harmless when bashlex is absent, strictly fewer
+  # false positives when it's present.
+  mask_inert_literals: true
 
 rules:
 

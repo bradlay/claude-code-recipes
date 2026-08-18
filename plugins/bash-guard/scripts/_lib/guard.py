@@ -31,7 +31,7 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped, unused-ignore]
 
-from . import identity, paths, segments, wrappers
+from . import identity, paths, segments, shell_ast, wrappers
 
 _SECURE_FILE_MODE = 0o600
 
@@ -521,6 +521,23 @@ def normalize_for_patterns(command: str) -> str:
     return re.sub(r"\s+", " ", normalized).strip()
 
 
+def _pattern_view(command: str, mask_inert_literals: bool) -> str:
+    """The text rules are actually matched against for one sub-command
+    form: optionally AST-masked (``shell_ast.mask_command``), then
+    ``normalize_for_patterns``.
+
+    Masking only ever REMOVES text a rule could match (proven-inert
+    literal arguments of a read-only inspection command are replaced by
+    a placeholder); it never adds or hides an executing form. When
+    bashlex is unavailable, or the command doesn't parse, or masking is
+    disabled via ``settings.mask_inert_literals``, this is a no-op and
+    behaves exactly as before — the safe degradation direction.
+    """
+    if mask_inert_literals:
+        command = shell_ast.mask_command(command)
+    return normalize_for_patterns(command)
+
+
 # ----------------------------------------------------------------------
 # Rule evaluation
 # ----------------------------------------------------------------------
@@ -665,6 +682,7 @@ def evaluate_chain(
     exempt_cats = set(base_settings.get("exempt_categories_for_deploy_worktree") or [])
     identity_bindings = base_settings.get("identity_bindings") or {}
     category_scopes = base_settings.get("category_scopes") or {}
+    mask_inert_literals = base_settings.get("mask_inert_literals", True)
 
     # Setting a blocked environment variable is itself a denied action.
     # This replaces the removed CLAUDE_BASH_GUARD_FAIL_OPEN bypass:
@@ -776,7 +794,7 @@ def evaluate_chain(
         outcome: tuple[str, str] | None = None
         for form in forms:
             hit = _first_rule_decision(
-                rules, normalize_for_patterns(form), exempt_cats, target_dir,
+                rules, _pattern_view(form, mask_inert_literals), exempt_cats, target_dir,
                 category_scopes,
             )
             if hit is None:
@@ -798,7 +816,7 @@ def evaluate_chain(
         if base_settings.get("inspect_segments", True):
             for derived in segments.derive_inspection_segments(sub_command):
                 hit = _first_rule_decision(
-                    rules, normalize_for_patterns(derived), exempt_cats, target_dir,
+                    rules, _pattern_view(derived, mask_inert_literals), exempt_cats, target_dir,
                     category_scopes,
                 )
                 if hit is None or hit[0] == "allow":
