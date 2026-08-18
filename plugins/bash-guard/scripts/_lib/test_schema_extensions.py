@@ -70,6 +70,76 @@ class TestReplacement:
         assert "Run instead" not in reason
 
 
+_PRINT_POLICY_RULES = dedent(
+    """\
+    version: "t"
+    settings:
+      print_policies:
+        - program: democli
+          opt_in_env: DEMOCLI_PRINT_OK
+          recursion_env: DEMOCLI_IN_PRINT
+          fallback_hint: "Use the interactive mode."
+    rules: []
+    """
+)
+
+
+class TestPrintPolicies:
+    def test_print_invocation_default_denied(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DEMOCLI_PRINT_OK", raising=False)
+        config = _config_from(tmp_path, monkeypatch, _PRINT_POLICY_RULES)
+        decision, reason, _ = guard.evaluate_chain("democli -p hello", config, None)
+        assert decision == "deny"
+        assert "DEMOCLI_PRINT_OK" in reason
+
+    def test_print_in_later_chain_segment_denied(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DEMOCLI_PRINT_OK", raising=False)
+        config = _config_from(tmp_path, monkeypatch, _PRINT_POLICY_RULES)
+        decision, _, _ = guard.evaluate_chain("echo ok && democli -p x", config, None)
+        assert decision == "deny"
+
+    def test_wrapped_shell_c_print_denied(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DEMOCLI_PRINT_OK", raising=False)
+        config = _config_from(tmp_path, monkeypatch, _PRINT_POLICY_RULES)
+        decision, _, _ = guard.evaluate_chain(
+            "sh -c 'exec \"$@\"' _ democli -p x", config, None
+        )
+        assert decision == "deny"
+
+    def test_opt_in_env_allows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DEMOCLI_PRINT_OK", "1")
+        monkeypatch.delenv("DEMOCLI_IN_PRINT", raising=False)
+        config = _config_from(tmp_path, monkeypatch, _PRINT_POLICY_RULES)
+        decision, _, _ = guard.evaluate_chain("democli -p hello", config, None)
+        assert decision == "allow"
+
+    def test_recursion_sentinel_denies_even_with_opt_in(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DEMOCLI_PRINT_OK", "1")
+        monkeypatch.setenv("DEMOCLI_IN_PRINT", "1")
+        config = _config_from(tmp_path, monkeypatch, _PRINT_POLICY_RULES)
+        decision, reason, _ = guard.evaluate_chain("democli -p hello", config, None)
+        assert decision == "deny"
+        assert "recursi" in reason.lower()
+
+    def test_non_print_invocation_unaffected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DEMOCLI_PRINT_OK", raising=False)
+        config = _config_from(tmp_path, monkeypatch, _PRINT_POLICY_RULES)
+        decision, _, _ = guard.evaluate_chain("democli status", config, None)
+        assert decision == "allow"
+
+
 _SCOPED_RULES = dedent(
     """\
     version: "t"

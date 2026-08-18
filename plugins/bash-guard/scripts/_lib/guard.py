@@ -680,6 +680,33 @@ def evaluate_chain(
                 command,
             )
 
+    # Print-policy gates: settings.print_policies lists CLIs whose
+    # headless print mode is default-denied (opt-in via env var, with a
+    # recursion sentinel). Evaluated on the RAW command first so the
+    # fail-closed wrapped-`sh -c` backstop sees quote tricks the chain
+    # splitter cannot, then per sub-command below. Local import: the
+    # policy module imports helpers from this one.
+    print_policies: list[Any] = []
+    if base_settings.get("print_policies"):
+        from . import print_policy as _pp
+
+        for entry in base_settings["print_policies"]:
+            if not isinstance(entry, dict) or not entry.get("program"):
+                continue
+            print_policies.append(
+                _pp.PrintPolicy(
+                    program=str(entry["program"]),
+                    opt_in_env=str(entry.get("opt_in_env", "")),
+                    recursion_env=str(entry.get("recursion_env", "")),
+                    fallback_hint=str(entry.get("fallback_hint", "")),
+                )
+            )
+        for pol in print_policies:
+            hit = _pp.guard_outcome(pol, command)
+            if hit is not None:
+                reason, decision = hit
+                return (decision, reason, command)
+
     current_cwd = cwd
 
     for sub_command in split_chained_commands(command):
@@ -706,6 +733,21 @@ def evaluate_chain(
             identity_reason = identity.check_identity(sub_command, target_dir, identity_bindings)
             if identity_reason:
                 return ("deny", identity_reason, sub_command)
+
+        # Per-sub-command print-policy pass: catches an invocation that
+        # is not the first program in the compound command
+        # (``echo ok && <program> -p ...``), including with wrappers
+        # stripped. The raw-command pass above already handled the
+        # wrapped-`sh -c` backstop.
+        if print_policies:
+            from . import print_policy as _pp
+
+            for pol in print_policies:
+                for candidate in (sub_command, wrappers.strip_wrappers(sub_command)):
+                    hit = _pp.guard_outcome(pol, candidate)
+                    if hit is not None:
+                        reason, decision = hit
+                        return (decision, reason, sub_command)
 
         effective = resolve_config_for(target_dir, config)
         rules = effective.get("rules", []) or []
