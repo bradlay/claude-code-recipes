@@ -8,6 +8,7 @@ only over-enforce, never silently disable a rule.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from textwrap import dedent
 
@@ -138,6 +139,138 @@ class TestPrintPolicies:
         config = _config_from(tmp_path, monkeypatch, _PRINT_POLICY_RULES)
         decision, _, _ = guard.evaluate_chain("democli status", config, None)
         assert decision == "allow"
+
+
+_CHAIN_POLICY_RULES = dedent(
+    """\
+    version: "t"
+    settings:
+      chain_policy:
+        enabled: true
+        standalone_leading_tokens: [mytool]
+        deny_cd_prefix: true
+    rules: []
+    """
+)
+
+
+class TestChainPolicy:
+    def test_chained_standalone_tool_denied_with_split(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = _config_from(tmp_path, monkeypatch, _CHAIN_POLICY_RULES)
+        decision, reason, _ = guard.evaluate_chain(
+            "mytool status && echo done", config, None
+        )
+        assert decision == "deny"
+        assert "Run instead: mytool status" in reason
+
+    def test_standalone_tool_alone_is_allowed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = _config_from(tmp_path, monkeypatch, _CHAIN_POLICY_RULES)
+        assert guard.evaluate_chain("mytool status", config, None)[0] == "allow"
+
+    def test_cd_prefix_denied_with_split(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = _config_from(tmp_path, monkeypatch, _CHAIN_POLICY_RULES)
+        decision, reason, _ = guard.evaluate_chain(
+            "cd /tmp && ls -la", config, None
+        )
+        assert decision == "deny"
+        assert "Run instead: ls -la" in reason
+
+    def test_quoted_mention_does_not_fire(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = _config_from(tmp_path, monkeypatch, _CHAIN_POLICY_RULES)
+        decision, _, _ = guard.evaluate_chain(
+            "echo 'mytool status && stuff'", config, None
+        )
+        assert decision == "allow"
+
+    def test_disabled_by_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = _config_from(
+            tmp_path,
+            monkeypatch,
+            'version: "t"\nsettings: {}\nrules: []\n',
+        )
+        decision, _, _ = guard.evaluate_chain(
+            "cd /tmp && ls -la", config, None
+        )
+        assert decision == "allow"
+
+    def test_specific_rule_wins_over_chain_policy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        text = _CHAIN_POLICY_RULES.replace(
+            "rules: []",
+            dedent(
+                """\
+                rules:
+                  - id: stash
+                    pattern: '^git\\s+stash\\b'
+                    decision: deny
+                    reason: "Specific: stash discards work."
+                """
+            ),
+        )
+        config = _config_from(tmp_path, monkeypatch, text)
+        decision, reason, _ = guard.evaluate_chain(
+            "git stash && mytool status", config, None
+        )
+        assert decision == "deny"
+        assert "Specific" in reason
+
+
+class TestAtomicApproval:
+    def test_token_single_use_under_race(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threading
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        from _lib import paths as paths_mod
+
+        approvals = paths_mod.approvals_dir()
+        approvals.mkdir(parents=True, exist_ok=True)
+        guard.write_approval("git push --force origin x")
+
+        results: list[bool] = []
+        lock = threading.Lock()
+
+        def worker() -> None:
+            got = guard.consume_approval("git push --force origin x", 60)
+            with lock:
+                results.append(got)
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert results.count(True) == 1
+
+    def test_expired_token_not_consumed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import os as _os
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        from _lib import paths as paths_mod
+
+        approvals = paths_mod.approvals_dir()
+        approvals.mkdir(parents=True, exist_ok=True)
+        guard.write_approval("git push --force origin y")
+        token = approvals / guard._command_hash("git push --force origin y")
+        old = time.time() - 3600
+        _os.utime(token, (old, old))
+        assert guard.consume_approval("git push --force origin y", 60) is False
 
 
 _SCOPED_RULES = dedent(

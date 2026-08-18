@@ -359,21 +359,29 @@ def _command_hash(command: str) -> str:
 
 
 def consume_approval(command: str, expiry_seconds: int) -> bool:
-    """Check for a one-shot approval token; consume it if valid."""
+    """Check for a one-shot approval token; consume it if valid.
+
+    Consumption is an ATOMIC RENAME claim: exactly one concurrent caller
+    can win the rename, so two racing invocations can never both spend
+    the same one-shot token (the previous stat-then-unlink sequence let
+    both return True). The claimed file is removed afterwards either way.
+    """
     approval_file = paths.approvals_dir() / _command_hash(command)
-    if not approval_file.exists():
-        return False
+    claim = approval_file.with_name(
+        approval_file.name + f".claimed-{os.getpid()}-{time.monotonic_ns()}"
+    )
     try:
-        age = time.time() - approval_file.stat().st_mtime
-        if age > expiry_seconds:
-            with contextlib.suppress(OSError):
-                approval_file.unlink(missing_ok=True)
-            return False
-        with contextlib.suppress(OSError):
-            approval_file.unlink(missing_ok=True)
-        return True
+        approval_file.rename(claim)
     except OSError:
         return False
+    try:
+        age = time.time() - claim.stat().st_mtime
+        return age <= expiry_seconds
+    except OSError:
+        return False
+    finally:
+        with contextlib.suppress(OSError):
+            claim.unlink(missing_ok=True)
 
 
 def write_approval(command: str) -> None:
@@ -804,7 +812,68 @@ def evaluate_chain(
                 return ("allow", "", "")
             return (decision, reason, sub_command)
 
+    # Chain-level policy runs LAST, after every segment was individually
+    # allowed, so a specific rule's better replacement always wins over
+    # this generic advice.
+    chain_hit = _chain_policy_decision(command, base_settings.get("chain_policy") or {})
+    if chain_hit is not None:
+        return chain_hit
+
     return ("allow", "", "")
+
+
+def _chain_policy_decision(
+    command: str, policy: dict[str, Any]
+) -> tuple[str, str, str] | None:
+    """Deny two compound-command shapes that defeat leading-token
+    permission allow-lists, each with a ``Run instead:`` split the caller
+    can re-run immediately.
+
+    * ``standalone_leading_tokens``: a chain where any segment's leading
+      token is a standalone-only command. Permission allow-lists match a
+      command's leading token, so chaining or piping such a command
+      always falls outside its allow-list entry and lands on the
+      operator as an approval prompt.
+    * ``deny_cd_prefix``: a chain whose first segment is ``cd``. The
+      shell cwd persists between tool calls and most tools take a path
+      argument, so the prefix is never needed and only defeats the
+      allow-list.
+
+    Leading-token matching only: a token inside a quoted argument never
+    fires this. Disabled by default (``enabled: false``).
+    """
+    if not policy or not policy.get("enabled"):
+        return None
+    segs = [seg for seg in split_chained_commands(command) if seg]
+    if len(segs) < 2:
+        return None
+
+    tokens = policy.get("standalone_leading_tokens")
+    standalone_tokens = {str(t) for t in tokens} if isinstance(tokens, list) else set()
+    if standalone_tokens:
+        hits = [seg for seg in segs if seg.split(None, 1)[0] in standalone_tokens]
+        if hits:
+            return (
+                "deny",
+                "Chained invocation of a standalone-only command. Run it as "
+                "its own call: chains and pipes fall outside leading-token "
+                "permission allow-lists and land on the operator as an "
+                "approval prompt.\nRun instead: " + "\n".join(hits),
+                command,
+            )
+
+    if policy.get("deny_cd_prefix") and re.match(r"^cd(\s|$)", segs[0]):
+        rest = [seg for seg in segs[1:] if not re.match(r"^cd(\s|$)", seg)]
+        suggestion = ("\nRun instead: " + "\n".join(rest)) if rest else ""
+        return (
+            "deny",
+            "cd-prefixed command chain. Use absolute paths or the tool's "
+            "path argument; the shell cwd persists between calls if you "
+            "must change directory." + suggestion,
+            command,
+        )
+
+    return None
 
 
 _MORE_RESTRICTIVE = {"allow": 0, "ask": 1, "deny": 2}
