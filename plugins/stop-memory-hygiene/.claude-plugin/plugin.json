@@ -1,0 +1,10 @@
+{
+  "name": "stop-memory-hygiene",
+  "version": "0.1.0",
+  "description": "Stop hook that watches the auto-memory MEMORY.md index (size, over-long lines, unlinked topic files) and suggests a prune as a non-blocking systemMessage, at most once per 24h per project. Never blocks a stop.",
+  "author": {
+    "name": "bradlay"
+  },
+  "homepage": "https://github.com/bradlay/claude-code-recipes",
+  "license": "MIT"
+}
