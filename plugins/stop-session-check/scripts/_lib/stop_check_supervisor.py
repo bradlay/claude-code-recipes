@@ -32,6 +32,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from _lib import paths
@@ -111,15 +112,11 @@ def log_event(event: str, **fields: Any) -> None:
     function never logs a subprocess's stdout/stderr, so nothing free-text
     or secret-shaped from a supervised command reaches the log.
     """
-    try:
-        import datetime
-
+    with contextlib.suppress(Exception):
         log_path = paths.hooks_log_dir() / "stop-check.jsonl"
-        rec = {"ts": datetime.datetime.now(datetime.UTC).isoformat(), "event": event, **fields}
+        rec = {"ts": datetime.now(timezone.utc).isoformat(), "event": event, **fields}
         with log_path.open("a") as fh:
             fh.write(json.dumps(rec, default=str) + "\n")
-    except Exception:  # noqa: BLE001, S110 (diagnostics must never break the hook)
-        pass
 
 
 # ============================================================================
@@ -249,7 +246,9 @@ def supervised_run(
         result = SupervisedResult()
         result.skipped = True
         if log:
-            log_event("supervised", phase=phase, cmd=cmd[0], skipped=True, reason="budget_exhausted")
+            log_event(
+                "supervised", phase=phase, cmd=cmd[0], skipped=True, reason="budget_exhausted"
+            )
         return result
 
     def _log_cancelled(cancelled: SupervisedResult) -> None:

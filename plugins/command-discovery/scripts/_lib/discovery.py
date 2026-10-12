@@ -123,7 +123,9 @@ def _suggestion_text(vendor: str, bad: str, attempted_path: str, candidates: lis
     )
 
 
-def evaluate(payload: dict[str, Any], inventory: inventory_mod.Inventory | None = None) -> str | None:
+def evaluate(
+    payload: dict[str, Any], inventory: inventory_mod.Inventory | None = None
+) -> str | None:
     """Return correction text to inject, or None to stay silent.
 
     Pure function - unit-testable without stdin/stdout plumbing. When

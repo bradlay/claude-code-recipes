@@ -109,11 +109,11 @@ READ_ONLY_INSPECTION: frozenset[str] = frozenset(
 EXEC_CAPABLE_OPTIONS: frozenset[str] = frozenset(
     {
         "--compress-program",  # sort — runs the value as a compressor
-        "--pre",               # rg — preprocessor command
-        "--pre-glob",          # rg — selects which files hit --pre
-        "--hostname-bin",      # rg — executed to resolve the hostname
-        "--pager",             # ack / rg — the value is spawned
-        "--filter",            # ack
+        "--pre",  # rg — preprocessor command
+        "--pre-glob",  # rg — selects which files hit --pre
+        "--hostname-bin",  # rg — executed to resolve the hostname
+        "--pager",  # ack / rg — the value is spawned
+        "--filter",  # ack
     }
 )
 

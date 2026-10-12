@@ -40,7 +40,7 @@ def main() -> int:
 
     try:
         context = evaluate(payload)
-    except Exception:  # noqa: BLE001 - fail-silent: advisory must never break
+    except Exception:  # fail-silent: the advisory must never break the call
         context = None
 
     if not context:

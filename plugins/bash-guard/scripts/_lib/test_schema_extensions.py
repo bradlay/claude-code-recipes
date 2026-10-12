@@ -8,16 +8,20 @@ only over-enforce, never silently disable a rule.
 
 from __future__ import annotations
 
+import os
+import threading
 import time
 from pathlib import Path
 from textwrap import dedent
+from typing import Any
 
 import pytest
 
 from _lib import guard
+from _lib import paths as paths_mod
 
 
-def _config_from(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> dict:
+def _config_from(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> dict[str, Any]:
     path = tmp_path / "rules.yaml"
     path.write_text(text)
     monkeypatch.setenv("CLAUDE_BASH_GUARD_RULES_FILE", str(path))
@@ -108,14 +112,10 @@ class TestPrintPolicies:
     ) -> None:
         monkeypatch.delenv("DEMOCLI_PRINT_OK", raising=False)
         config = _config_from(tmp_path, monkeypatch, _PRINT_POLICY_RULES)
-        decision, _, _ = guard.evaluate_chain(
-            "sh -c 'exec \"$@\"' _ democli -p x", config, None
-        )
+        decision, _, _ = guard.evaluate_chain("sh -c 'exec \"$@\"' _ democli -p x", config, None)
         assert decision == "deny"
 
-    def test_opt_in_env_allows(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_opt_in_env_allows(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DEMOCLI_PRINT_OK", "1")
         monkeypatch.delenv("DEMOCLI_IN_PRINT", raising=False)
         config = _config_from(tmp_path, monkeypatch, _PRINT_POLICY_RULES)
@@ -159,9 +159,7 @@ class TestChainPolicy:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         config = _config_from(tmp_path, monkeypatch, _CHAIN_POLICY_RULES)
-        decision, reason, _ = guard.evaluate_chain(
-            "mytool status && echo done", config, None
-        )
+        decision, reason, _ = guard.evaluate_chain("mytool status && echo done", config, None)
         assert decision == "deny"
         assert "Run instead: mytool status" in reason
 
@@ -175,9 +173,7 @@ class TestChainPolicy:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         config = _config_from(tmp_path, monkeypatch, _CHAIN_POLICY_RULES)
-        decision, reason, _ = guard.evaluate_chain(
-            "cd /tmp && ls -la", config, None
-        )
+        decision, reason, _ = guard.evaluate_chain("cd /tmp && ls -la", config, None)
         assert decision == "deny"
         assert "Run instead: ls -la" in reason
 
@@ -185,22 +181,16 @@ class TestChainPolicy:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         config = _config_from(tmp_path, monkeypatch, _CHAIN_POLICY_RULES)
-        decision, _, _ = guard.evaluate_chain(
-            "echo 'mytool status && stuff'", config, None
-        )
+        decision, _, _ = guard.evaluate_chain("echo 'mytool status && stuff'", config, None)
         assert decision == "allow"
 
-    def test_disabled_by_default(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_disabled_by_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         config = _config_from(
             tmp_path,
             monkeypatch,
             'version: "t"\nsettings: {}\nrules: []\n',
         )
-        decision, _, _ = guard.evaluate_chain(
-            "cd /tmp && ls -la", config, None
-        )
+        decision, _, _ = guard.evaluate_chain("cd /tmp && ls -la", config, None)
         assert decision == "allow"
 
     def test_specific_rule_wins_over_chain_policy(
@@ -219,9 +209,7 @@ class TestChainPolicy:
             ),
         )
         config = _config_from(tmp_path, monkeypatch, text)
-        decision, reason, _ = guard.evaluate_chain(
-            "git stash && mytool status", config, None
-        )
+        decision, reason, _ = guard.evaluate_chain("git stash && mytool status", config, None)
         assert decision == "deny"
         assert "Specific" in reason
 
@@ -230,11 +218,8 @@ class TestAtomicApproval:
     def test_token_single_use_under_race(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import threading
-
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-        from _lib import paths as paths_mod
 
         approvals = paths_mod.approvals_dir()
         approvals.mkdir(parents=True, exist_ok=True)
@@ -258,18 +243,15 @@ class TestAtomicApproval:
     def test_expired_token_not_consumed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import os as _os
-
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-        from _lib import paths as paths_mod
 
         approvals = paths_mod.approvals_dir()
         approvals.mkdir(parents=True, exist_ok=True)
         guard.write_approval("git push --force origin y")
         token = approvals / guard._command_hash("git push --force origin y")
         old = time.time() - 3600
-        _os.utime(token, (old, old))
+        os.utime(token, (old, old))
         assert guard.consume_approval("git push --force origin y", 60) is False
 
 
@@ -301,9 +283,7 @@ class TestCategoryScopes:
     ) -> None:
         managed = tmp_path / "managed"
         managed.mkdir()
-        config = _config_from(
-            tmp_path, monkeypatch, _SCOPED_RULES.format(managed_dir=managed)
-        )
+        config = _config_from(tmp_path, monkeypatch, _SCOPED_RULES.format(managed_dir=managed))
         decision, _, _ = guard.evaluate_chain("git stash", config, managed)
         assert decision == "deny"
 
@@ -314,9 +294,7 @@ class TestCategoryScopes:
         elsewhere = tmp_path / "elsewhere"
         managed.mkdir()
         elsewhere.mkdir()
-        config = _config_from(
-            tmp_path, monkeypatch, _SCOPED_RULES.format(managed_dir=managed)
-        )
+        config = _config_from(tmp_path, monkeypatch, _SCOPED_RULES.format(managed_dir=managed))
         decision, _, _ = guard.evaluate_chain("git stash", config, elsewhere)
         assert decision == "allow"
 
@@ -327,9 +305,7 @@ class TestCategoryScopes:
         elsewhere = tmp_path / "elsewhere"
         managed.mkdir()
         elsewhere.mkdir()
-        config = _config_from(
-            tmp_path, monkeypatch, _SCOPED_RULES.format(managed_dir=managed)
-        )
+        config = _config_from(tmp_path, monkeypatch, _SCOPED_RULES.format(managed_dir=managed))
         decision, _, _ = guard.evaluate_chain("rm -rf /tmp/x", config, elsewhere)
         assert decision == "deny"
 
@@ -362,9 +338,7 @@ class TestCategoryScopes:
     ) -> None:
         managed = tmp_path / "managed"
         managed.mkdir()
-        config = _config_from(
-            tmp_path, monkeypatch, _SCOPED_RULES.format(managed_dir=managed)
-        )
+        config = _config_from(tmp_path, monkeypatch, _SCOPED_RULES.format(managed_dir=managed))
         decision, _, _ = guard.evaluate_chain("git stash", config, None)
         assert decision == "deny"
 

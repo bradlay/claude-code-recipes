@@ -136,13 +136,13 @@ def group_members(pgid: int) -> list[int] | None:
     planted ``ps`` earlier on PATH must not shadow the real one.
     """
     ps_path = next(
-        (p for p in _PS_CANDIDATES if os.path.exists(p)),
+        (p for p in _PS_CANDIDATES if Path(p).exists()),
         None,
     ) or shutil.which("ps")
     if ps_path is None:
         return None
     try:
-        proc = subprocess.run(  # noqa: S603 (fixed argv, no shell)
+        proc = subprocess.run(  # fixed argv, no shell
             [ps_path, "-A", "-o", "pid=,pgid="],
             capture_output=True,
             text=True,
@@ -287,7 +287,7 @@ def reaped_run(
     caller_pgid = os.getpgrp()
     t_spawn = time.perf_counter()
     try:
-        proc = subprocess.Popen(  # noqa: S603 (fixed argv, never a shell string)
+        proc = subprocess.Popen(  # fixed argv, never a shell string
             cmd,
             cwd=cwd,
             stdin=subprocess.PIPE if stdin_input is not None else None,

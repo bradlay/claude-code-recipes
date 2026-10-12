@@ -25,6 +25,8 @@ import dataclasses
 import json
 from pathlib import Path
 
+from . import paths
+
 MAX_COMMANDS = 5000
 MAX_COMMAND_LEN = 200
 
@@ -38,20 +40,23 @@ class Inventory:
 def _parse_raw(text: str, suffix: str) -> object | None:
     if suffix in (".yaml", ".yml"):
         try:
-            import yaml
+            import yaml  # noqa: PLC0415 (optional dependency)
         except ImportError:
             return None
         with contextlib.suppress(Exception):
-            return yaml.safe_load(text)
+            loaded: object = yaml.safe_load(text)
+            return loaded
         return None
     # Default / unknown extension: try JSON first, then YAML if available.
     with contextlib.suppress(json.JSONDecodeError):
-        return json.loads(text)
+        decoded: object = json.loads(text)
+        return decoded
     with contextlib.suppress(ImportError):
-        import yaml
+        import yaml  # noqa: PLC0415 (optional dependency)
 
         with contextlib.suppress(Exception):
-            return yaml.safe_load(text)
+            fallback: object = yaml.safe_load(text)
+            return fallback
     return None
 
 
@@ -59,8 +64,6 @@ def load_inventory(path: Path | None = None) -> Inventory | None:
     """Load and validate the inventory config. Returns ``None`` on any
     missing file, unreadable file, or malformed content - the caller
     treats that as "stay silent", never as an error to surface."""
-    from . import paths
-
     target = path if path is not None else paths.inventory_file()
 
     try:

@@ -20,8 +20,7 @@ _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR))
 
-from _lib import _io  # noqa: E402
-from _lib import transcript_parser  # noqa: E402
+from _lib import _io, transcript_parser  # noqa: E402
 from _lib.checklist import (  # noqa: E402
     build_checklist,
     detect_repo,

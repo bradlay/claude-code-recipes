@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from textwrap import dedent
+from typing import Any
 
 import pytest
 
@@ -27,9 +28,7 @@ class TestStripWrappers:
         assert wrappers.strip_wrappers("mise exec -- git push --force") == "git push --force"
 
     def test_mise_exec_with_tool_pin_is_stripped(self) -> None:
-        assert (
-            wrappers.strip_wrappers("mise exec python@3.12 -- git stash") == "git stash"
-        )
+        assert wrappers.strip_wrappers("mise exec python@3.12 -- git stash") == "git stash"
 
     def test_env_with_assignments_is_stripped(self) -> None:
         assert wrappers.strip_wrappers("env FOO=1 BAR=2 git stash") == "git stash"
@@ -44,9 +43,7 @@ class TestStripWrappers:
         assert wrappers.strip_wrappers('bash -lc "git checkout main"') == "git checkout main"
 
     def test_nested_wrappers_unwrap_recursively(self) -> None:
-        assert (
-            wrappers.strip_wrappers("env FOO=1 sh -c 'nice -n 5 git stash'") == "git stash"
-        )
+        assert wrappers.strip_wrappers("env FOO=1 sh -c 'nice -n 5 git stash'") == "git stash"
 
     def test_uv_run_plain_is_stripped(self) -> None:
         assert wrappers.strip_wrappers("uv run pytest") == "pytest"
@@ -102,7 +99,7 @@ _FIXTURE_RULES_NO_STRIP = _FIXTURE_RULES.replace(
 )
 
 
-def _config_from(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> dict:
+def _config_from(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> dict[str, Any]:
     path = tmp_path / "rules.yaml"
     path.write_text(text)
     monkeypatch.setenv("CLAUDE_BASH_GUARD_RULES_FILE", str(path))
@@ -111,9 +108,7 @@ def _config_from(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> 
 
 
 class TestEvaluateChainWithWrappers:
-    def test_wrapped_deny_is_denied(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_wrapped_deny_is_denied(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         config = _config_from(tmp_path, monkeypatch, _FIXTURE_RULES)
         decision, reason, _ = guard.evaluate_chain("mise exec -- git stash", config, None)
         assert decision == "deny"
@@ -159,9 +154,7 @@ class TestEvaluateChainWithWrappers:
         decision, _, _ = guard.evaluate_chain("mise exec -- git stash", config, None)
         assert decision == "allow"
 
-    def test_bare_deny_unchanged(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_bare_deny_unchanged(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         config = _config_from(tmp_path, monkeypatch, _FIXTURE_RULES)
         decision, _, _ = guard.evaluate_chain("git stash", config, None)
         assert decision == "deny"

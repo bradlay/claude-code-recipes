@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from textwrap import dedent
+from typing import Any
 
 import pytest
 
@@ -72,9 +73,7 @@ class TestExtractCommandSubstitutions:
         assert segments.extract_command_substitutions('echo "$(git stash)"') == ["git stash"]
 
     def test_apostrophe_inside_double_quotes_does_not_flip_mode(self) -> None:
-        assert segments.extract_command_substitutions("echo \"it's $(git stash)\"") == [
-            "git stash"
-        ]
+        assert segments.extract_command_substitutions('echo "it\'s $(git stash)"') == ["git stash"]
 
     def test_nested_substitution_is_extracted_recursively(self) -> None:
         result = segments.extract_command_substitutions("echo $(echo $(git stash))")
@@ -114,7 +113,7 @@ _FIXTURE_RULES_NO_INSPECT = _FIXTURE_RULES.replace(
 )
 
 
-def _config_from(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> dict:
+def _config_from(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> dict[str, Any]:
     path = tmp_path / "rules.yaml"
     path.write_text(text)
     monkeypatch.setenv("CLAUDE_BASH_GUARD_RULES_FILE", str(path))
@@ -183,8 +182,6 @@ class TestEvaluateChainWithDerivedSegments:
         # allow-rule match, which is a deliberate allowlist short-circuit
         # for the whole chain, not something this pass changes.
         config = _config_from(tmp_path, monkeypatch, _FIXTURE_RULES)
-        decision, _, offending = guard.evaluate_chain(
-            "true && echo x | git stash", config, None
-        )
+        decision, _, offending = guard.evaluate_chain("true && echo x | git stash", config, None)
         assert decision == "deny"
         assert "git stash" in offending

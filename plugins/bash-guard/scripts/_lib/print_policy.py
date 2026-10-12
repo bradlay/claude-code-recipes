@@ -150,7 +150,9 @@ def decide(
     return Decision(
         allow=True,
         is_print=True,
-        reason=f"{policy.program} -p allowed: opted in ({policy.opt_in_env}=1), non-recursive{cliff}",
+        reason=(
+            f"{policy.program} -p allowed: opted in ({policy.opt_in_env}=1), non-recursive{cliff}"
+        ),
     )
 
 
@@ -299,9 +301,7 @@ exit 97
 """
 
 
-def render_shim_text(
-    policy: PrintPolicy, guard_dir: str, python_exe: str | None = None
-) -> str:
+def render_shim_text(policy: PrintPolicy, guard_dir: str, python_exe: str | None = None) -> str:
     """Materialize the shim with absolute python + this-module paths baked
     in. Pure stdlib; safe to call without importing the heavier guard
     machinery."""
