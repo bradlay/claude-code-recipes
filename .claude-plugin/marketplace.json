@@ -8,7 +8,7 @@
     {
       "name": "plan-review-loop",
       "source": "./plugins/plan-review-loop",
-      "description": "Closed-loop plan review on ExitPlanMode. Pick a backend per session (Opus 4.8, Sonnet 5, codex, or Gemini 3.1 Pro via agy) — only probe-verified ones are offered; autoswe reviews locally. Denies plan exit on P0/P1 findings; loop closes when the plan is clean."
+      "description": "Closed-loop plan review on ExitPlanMode. Pick a backend per session (Opus 4.8, Sonnet 5, codex, or Gemini 3.1 Pro via agy); only probe-verified ones are offered; autoswe reviews locally. Denies plan exit on P0/P1 findings; loop closes when the plan is clean."
     },
     {
       "name": "bash-guard",
@@ -44,6 +44,26 @@
       "name": "putty-bridge",
       "source": "./plugins/putty-bridge",
       "description": "Generate a Windows PuTTY .reg + tmux snippet for remote tmux + Claude Code: UTF-8 + UTF8linedraw, true colour, deuteranopia-friendly dark palette, native copy/paste (right-click pastes, Shift+drag in tmux mouse-mode auto-copies via PuTTY's local selection), 50k scrollback, secure defaults. No PuTTY GUI clicks."
+    },
+    {
+      "name": "command-discovery",
+      "source": "./plugins/command-discovery",
+      "description": "PostToolUse(Bash) hook that watches for a failed CLI invocation (an unknown/typo'd subcommand) and returns a did-you-mean suggestion via additionalContext, so the model self-corrects on the next turn instead of guessing again. The command inventory is configurable so it works with any CLI vendor, not just one hard-coded tool."
+    },
+    {
+      "name": "quota-advisory",
+      "source": "./plugins/quota-advisory",
+      "description": "Stop hook that surfaces a one-line advisory when the active usage-tracking block (via `ccusage` or a compatible CLI) crosses a configurable high-water mark, nudging you to /compact. Best-effort, cached, and budget-capped so a slow or missing usage CLI never risks the Stop gate."
+    },
+    {
+      "name": "stop-memory-hygiene",
+      "source": "./plugins/stop-memory-hygiene",
+      "description": "Stop hook that watches the auto-memory MEMORY.md index (size, over-long lines, unlinked topic files) and suggests a prune as a non-blocking systemMessage, at most once per 24h per project. Never blocks a stop."
+    },
+    {
+      "name": "agent-fleet",
+      "source": "./plugins/agent-fleet",
+      "description": "Skills for running a multi-session agent fleet (operator, leader, dispatcher, workers) with gating, succession and liveness checks, plus codebase-scan, dependency-scan, PR CI watch, deploy health watch and release-readiness workflows. Runtime adapters for Herdr, Claude Code and Codex; external tools are optional and documented per skill."
     }
   ]
 }
