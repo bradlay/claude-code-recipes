@@ -42,7 +42,7 @@ def main() -> int:
 
     try:
         text = compact_advisory_text()
-    except Exception:  # noqa: BLE001 (a cosmetic advisory must never break the stop)
+    except Exception:  # a cosmetic advisory must never break the stop
         text = None
 
     _write_stdout({"systemMessage": text} if text else {})

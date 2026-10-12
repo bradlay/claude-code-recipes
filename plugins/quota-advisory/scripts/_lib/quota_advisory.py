@@ -26,6 +26,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 import time
@@ -73,11 +74,9 @@ def _read_cache(cache_path: Path) -> float | object:
 def _write_cache(cache_path: Path, pct: float | None) -> None:
     """Cache a value, or `None` (the negative entry meaning "don't retry
     yet")."""
-    try:
+    with contextlib.suppress(OSError):  # best-effort: a cold cache just means no advisory
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps({"pct": pct, "at": time.time()}))
-    except OSError:  # best-effort - a cold cache just means no advisory
-        pass
 
 
 def _parse_pct(stdout: str) -> float | None:
@@ -122,7 +121,7 @@ def block_usage_pct(
         return None
 
     try:
-        result = subprocess.run(  # noqa: S603 (fixed argv, never a shell string)
+        result = subprocess.run(  # fixed argv, never a shell string
             list(usage_cmd),
             capture_output=True,
             text=True,
@@ -160,8 +159,8 @@ def compact_advisory_text(
 
 __all__ = [
     "BLOCK_TOTAL_MINUTES",
-    "COMPACT_THRESHOLD_PCT",
     "CACHE_TTL_S",
+    "COMPACT_THRESHOLD_PCT",
     "DEFAULT_ADVISORY_DEADLINE_S",
     "DEFAULT_USAGE_CMD",
     "block_usage_pct",

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import time
@@ -50,7 +51,7 @@ def record_strike(repo_name: str, fingerprint: str) -> int:
     prev_last_at = 0.0
 
     if path.exists():
-        try:
+        with contextlib.suppress(OSError, json.JSONDecodeError):
             raw = json.loads(path.read_text())
             if isinstance(raw, dict):
                 prev_fingerprint = str(raw.get("fingerprint", "") or "")
@@ -62,21 +63,18 @@ def record_strike(repo_name: str, fingerprint: str) -> int:
                     prev_last_at = float(raw.get("last_at", 0) or 0)
                 except (TypeError, ValueError):
                     prev_last_at = 0.0
-        except (OSError, json.JSONDecodeError):
-            pass
 
     if prev_fingerprint == fingerprint and now - prev_last_at < RESET_AFTER_SECONDS:
         strikes = prev_strikes + 1
     else:
         strikes = 1
 
-    try:
+    # Best-effort: if the state cannot be persisted, every Stop is a fresh strike.
+    with contextlib.suppress(OSError):
         state_dir.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps({"fingerprint": fingerprint, "strikes": strikes, "last_at": now})
         )
-    except OSError:
-        pass  # Best-effort - if we can't persist, every Stop is a fresh strike
 
     return strikes
 

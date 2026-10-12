@@ -39,7 +39,8 @@ _WRAPPER_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
         r"^uv\s+run\s+"
         r"(?![^\n]*?--(?:active|project)\b)"
-        r"(?:--\S+(?:[\s=]\S+)?\s+)*"),
+        r"(?:--\S+(?:[\s=]\S+)?\s+)*"
+    ),
     # nice -n N <cmd ...>
     re.compile(r"^nice\s+(?:-n\s+-?\d+\s+)?"),
     # time <cmd ...>  /  \time -f ... <cmd ...>

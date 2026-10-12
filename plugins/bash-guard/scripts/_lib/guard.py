@@ -714,7 +714,7 @@ def evaluate_chain(
     # policy module imports helpers from this one.
     print_policies: list[Any] = []
     if base_settings.get("print_policies"):
-        from . import print_policy as _pp
+        from . import print_policy as _pp  # noqa: PLC0415 (import cycle)
 
         for entry in base_settings["print_policies"]:
             if not isinstance(entry, dict) or not entry.get("program"):
@@ -766,7 +766,7 @@ def evaluate_chain(
         # stripped. The raw-command pass above already handled the
         # wrapped-`sh -c` backstop.
         if print_policies:
-            from . import print_policy as _pp
+            from . import print_policy as _pp  # noqa: PLC0415 (import cycle)
 
             for pol in print_policies:
                 for candidate in (sub_command, wrappers.strip_wrappers(sub_command)):
@@ -794,7 +794,10 @@ def evaluate_chain(
         outcome: tuple[str, str] | None = None
         for form in forms:
             hit = _first_rule_decision(
-                rules, _pattern_view(form, mask_inert_literals), exempt_cats, target_dir,
+                rules,
+                _pattern_view(form, mask_inert_literals),
+                exempt_cats,
+                target_dir,
                 category_scopes,
             )
             if hit is None:
@@ -816,7 +819,10 @@ def evaluate_chain(
         if base_settings.get("inspect_segments", True):
             for derived in segments.derive_inspection_segments(sub_command):
                 hit = _first_rule_decision(
-                    rules, _pattern_view(derived, mask_inert_literals), exempt_cats, target_dir,
+                    rules,
+                    _pattern_view(derived, mask_inert_literals),
+                    exempt_cats,
+                    target_dir,
                     category_scopes,
                 )
                 if hit is None or hit[0] == "allow":
@@ -840,9 +846,7 @@ def evaluate_chain(
     return ("allow", "", "")
 
 
-def _chain_policy_decision(
-    command: str, policy: dict[str, Any]
-) -> tuple[str, str, str] | None:
+def _chain_policy_decision(command: str, policy: dict[str, Any]) -> tuple[str, str, str] | None:
     """Deny two compound-command shapes that defeat leading-token
     permission allow-lists, each with a ``Run instead:`` split the caller
     can re-run immediately.
@@ -956,11 +960,7 @@ def _first_rule_decision(
     for rule in rules:
         if not _rule_matches(rule, pattern_command):
             continue
-        if (
-            exempt_cats
-            and rule.get("category") in exempt_cats
-            and _is_deploy_worktree(target_dir)
-        ):
+        if exempt_cats and rule.get("category") in exempt_cats and _is_deploy_worktree(target_dir):
             continue
         if category_scopes and not _rule_in_scope(rule, target_dir, category_scopes):
             continue
