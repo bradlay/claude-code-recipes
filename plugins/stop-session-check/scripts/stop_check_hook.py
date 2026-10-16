@@ -20,7 +20,7 @@ _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR))
 
-from _lib import _io  # noqa: E402
+from _lib import _io, transcript_parser  # noqa: E402
 from _lib.checklist import (  # noqa: E402
     build_checklist,
     detect_repo,
@@ -40,7 +40,8 @@ def main() -> int:
         if not repo_name or not repo_path:
             return _io.emit_continue_with_message()
 
-        data = build_checklist(repo_name, repo_path)
+        session_files = transcript_parser.edited_files(inv.transcript_path, cwd=repo_path)
+        data = build_checklist(repo_name, repo_path, session_files=session_files)
 
         non_done = [i for i in data["items"] if i["status"] != "done"]
         if not non_done:

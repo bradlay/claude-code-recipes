@@ -1,0 +1,10 @@
+{
+  "name": "command-discovery",
+  "version": "0.1.0",
+  "description": "PostToolUse(Bash) hook that watches for a failed CLI invocation (an unknown/typo'd subcommand) and returns a did-you-mean suggestion via additionalContext, so the model self-corrects on the next turn instead of guessing again. The command inventory is configurable so it works with any CLI vendor, not just one hard-coded tool.",
+  "author": {
+    "name": "bradlay"
+  },
+  "homepage": "https://github.com/bradlay/claude-code-recipes",
+  "license": "MIT"
+}

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import paths
+from . import paths, redaction
 
 _RAW_JSONL_MAX_BYTES = 20 * 1024 * 1024
 _SECURE_FILE_MODE = 0o600
@@ -137,7 +137,9 @@ def _log_event(event: str, msg: str, *, level: str = "info") -> None:
 
 
 def log(inv: HookInvocation, msg: str, *, level: str = "info") -> None:
-    _log_event(inv.event, f"[{inv.session_id}] {msg}", level=level)
+    # Logged messages can carry command text; scrub secret-shaped
+    # content before it lands on disk.
+    _log_event(inv.event, f"[{inv.session_id}] {redaction.redact_secrets(msg)}", level=level)
 
 
 def _archive_raw(inv: HookInvocation) -> None:
@@ -227,17 +229,6 @@ def emit_pretooluse_deny(
     return 0
 
 
-def fail_open_pretooluse(inv: HookInvocation, reason: str) -> int:
-    """Allow + advisory context + visible systemMessage explaining the bypass."""
-    log(inv, f"fail_open: {reason}", level="warn")
-    return emit_pretooluse_allow(
-        additional_context=f"{inv.event}: {reason}. Proceeding without guard.",
-        system_message=(
-            f"[bash-guard] {inv.event} bypass via CLAUDE_BASH_GUARD_FAIL_OPEN=1: {reason}"
-        ),
-    )
-
-
 def fail_closed_pretooluse(inv: HookInvocation, reason: str) -> int:
     """Deny with a clear remediation message."""
     log(inv, f"fail_closed: {reason}", level="error")
@@ -245,19 +236,21 @@ def fail_closed_pretooluse(inv: HookInvocation, reason: str) -> int:
         reason,
         additional_context=(
             f"bash-guard denied this command: {reason}\n\n"
-            f"To bypass for prereq failures: set CLAUDE_BASH_GUARD_FAIL_OPEN=1 in your shell. "
-            f"To disable: /plugin disable bash-guard@claude-code-recipes."
+            f"To disable the plugin entirely (a visible, auditable action): "
+            f"/plugin disable bash-guard@claude-code-recipes."
         ),
     )
 
 
 def fail_open_or_closed_pretooluse(inv: HookInvocation, reason: str) -> int:
-    """Honor CLAUDE_BASH_GUARD_FAIL_OPEN: open if =1, else closed (default)."""
-    if os.environ.get("CLAUDE_BASH_GUARD_FAIL_OPEN", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }:
-        return fail_open_pretooluse(inv, reason)
+    """Always fail closed.
+
+    An environment-variable bypass (the former
+    CLAUDE_BASH_GUARD_FAIL_OPEN) meant one exported variable silently
+    disabled the entire enforcement layer, so it was removed: setting
+    that variable is now itself a denied action (see
+    ``settings.blocked_env_vars`` in the evaluator). The function name
+    is kept for callers; the behaviour is fail-closed, and disabling
+    the guard is done visibly via /plugin disable.
+    """
     return fail_closed_pretooluse(inv, reason)

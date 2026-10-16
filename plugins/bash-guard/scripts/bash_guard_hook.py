@@ -13,8 +13,8 @@
 #   and re-run.)
 #
 # Failure posture: fail-CLOSED. Any error in the guard returns deny
-# with a clear remediation message. Bypass via
-# CLAUDE_BASH_GUARD_FAIL_OPEN=1 in the parent shell.
+# with a clear remediation message. There is no environment-variable
+# bypass; disabling the guard is a visible plugin-level action.
 
 from __future__ import annotations
 
@@ -118,7 +118,7 @@ def main() -> int:
             additional_context=(
                 f"Sub-command that triggered: {offending_sub[:200]}\n\n"
                 f"Edit ${{XDG_CONFIG_HOME}}/claude-bash-guard/rules.yaml to override "
-                f"this rule, or set CLAUDE_BASH_GUARD_FAIL_OPEN=1 to bypass the entire guard."
+                f"this rule, or disable the plugin via /plugin disable."
             ),
         )
 

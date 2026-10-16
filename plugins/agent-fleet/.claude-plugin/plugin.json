@@ -1,0 +1,10 @@
+{
+  "name": "agent-fleet",
+  "version": "0.1.0",
+  "description": "Skills for running a multi-session agent fleet (operator, leader, dispatcher, workers) with gating, succession and liveness checks, plus codebase-scan, dependency-scan, PR CI watch, deploy health watch and release-readiness workflows. Runtime adapters for Herdr, Claude Code and Codex; external tools are optional and documented per skill.",
+  "author": {
+    "name": "bradlay"
+  },
+  "homepage": "https://github.com/bradlay/claude-code-recipes",
+  "license": "MIT"
+}
