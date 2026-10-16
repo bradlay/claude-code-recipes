@@ -31,7 +31,7 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped, unused-ignore]
 
-from . import identity, paths
+from . import identity, paths, segments, shell_ast, wrappers
 
 _SECURE_FILE_MODE = 0o600
 
@@ -126,9 +126,45 @@ def load_rules() -> dict[str, Any]:
         for key, value in default_settings.items():
             config["settings"].setdefault(key, value)
 
+    _expand_pattern_placeholders(config)
+
     _CACHE["config"] = config
     _CACHE["key"] = cache_key
     return config
+
+
+_PLACEHOLDER_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
+
+
+def _expand_pattern_placeholders(config: dict[str, Any]) -> None:
+    """Expand ``{setting_name}`` placeholders in rule patterns.
+
+    A placeholder whose name matches a LIST-valued setting expands to a
+    non-capturing alternation of the escaped values, so
+    ``checkout\\s+({protected_branches})`` with
+    ``protected_branches: [main, master]`` becomes
+    ``checkout\\s+((?:main|master))``. This makes the settings comment
+    that always promised this behaviour true. An unknown or non-list
+    placeholder is left as written: the literal ``{name}`` will then
+    simply never match a real command, which fails safe for allow rules
+    and is caught by rule tests for deny rules.
+    """
+
+    def _expand(text: str, settings: dict[str, Any]) -> str:
+        def _sub(m: re.Match[str]) -> str:
+            values = settings.get(m.group(1))
+            if isinstance(values, list) and values:
+                return "(?:" + "|".join(re.escape(str(v)) for v in values) + ")"
+            return m.group(0)
+
+        return _PLACEHOLDER_RE.sub(_sub, text)
+
+    settings = config.get("settings", {}) or {}
+    for rule in config.get("rules", []) or []:
+        for key in ("pattern", "extra_search"):
+            value = rule.get(key)
+            if isinstance(value, str) and "{" in value:
+                rule[key] = _expand(value, settings)
 
 
 # ----------------------------------------------------------------------
@@ -323,21 +359,29 @@ def _command_hash(command: str) -> str:
 
 
 def consume_approval(command: str, expiry_seconds: int) -> bool:
-    """Check for a one-shot approval token; consume it if valid."""
+    """Check for a one-shot approval token; consume it if valid.
+
+    Consumption is an ATOMIC RENAME claim: exactly one concurrent caller
+    can win the rename, so two racing invocations can never both spend
+    the same one-shot token (the previous stat-then-unlink sequence let
+    both return True). The claimed file is removed afterwards either way.
+    """
     approval_file = paths.approvals_dir() / _command_hash(command)
-    if not approval_file.exists():
-        return False
+    claim = approval_file.with_name(
+        approval_file.name + f".claimed-{os.getpid()}-{time.monotonic_ns()}"
+    )
     try:
-        age = time.time() - approval_file.stat().st_mtime
-        if age > expiry_seconds:
-            with contextlib.suppress(OSError):
-                approval_file.unlink(missing_ok=True)
-            return False
-        with contextlib.suppress(OSError):
-            approval_file.unlink(missing_ok=True)
-        return True
+        approval_file.rename(claim)
     except OSError:
         return False
+    try:
+        age = time.time() - claim.stat().st_mtime
+        return age <= expiry_seconds
+    except OSError:
+        return False
+    finally:
+        with contextlib.suppress(OSError):
+            claim.unlink(missing_ok=True)
 
 
 def write_approval(command: str) -> None:
@@ -475,6 +519,23 @@ def normalize_for_patterns(command: str) -> str:
         return command
     normalized = re.sub(r"\s+-C\s*[= ]?\S+", "", command)
     return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _pattern_view(command: str, mask_inert_literals: bool) -> str:
+    """The text rules are actually matched against for one sub-command
+    form: optionally AST-masked (``shell_ast.mask_command``), then
+    ``normalize_for_patterns``.
+
+    Masking only ever REMOVES text a rule could match (proven-inert
+    literal arguments of a read-only inspection command are replaced by
+    a placeholder); it never adds or hides an executing form. When
+    bashlex is unavailable, or the command doesn't parse, or masking is
+    disabled via ``settings.mask_inert_literals``, this is a no-op and
+    behaves exactly as before — the safe degradation direction.
+    """
+    if mask_inert_literals:
+        command = shell_ast.mask_command(command)
+    return normalize_for_patterns(command)
 
 
 # ----------------------------------------------------------------------
@@ -620,6 +681,57 @@ def evaluate_chain(
     base_settings = config.get("settings", {}) or {}
     exempt_cats = set(base_settings.get("exempt_categories_for_deploy_worktree") or [])
     identity_bindings = base_settings.get("identity_bindings") or {}
+    category_scopes = base_settings.get("category_scopes") or {}
+    mask_inert_literals = base_settings.get("mask_inert_literals", True)
+
+    # Setting a blocked environment variable is itself a denied action.
+    # This replaces the removed CLAUDE_BASH_GUARD_FAIL_OPEN bypass:
+    # instead of one exported variable silently disabling enforcement,
+    # the engine denies the export. Checked on the RAW command (before
+    # splitting or stripping) so `export V=1`, `V=1 cmd`, `env V=1 cmd`
+    # and chained forms are all caught. A false positive on a quoted
+    # mention is acceptable: deny is the safe direction.
+    blocked_vars = base_settings.get("blocked_env_vars")
+    if blocked_vars is None:
+        blocked_vars = ["CLAUDE_BASH_GUARD_FAIL_OPEN"]
+    for var in blocked_vars:
+        if re.search(
+            r"(?:^|[\s;&|(`])(?:export\s+)?" + re.escape(str(var)) + r"\s*=",
+            command,
+        ):
+            return (
+                "deny",
+                f"Setting {var} is blocked: it would disable or weaken the guard. "
+                f"Disable the plugin visibly via /plugin disable instead.",
+                command,
+            )
+
+    # Print-policy gates: settings.print_policies lists CLIs whose
+    # headless print mode is default-denied (opt-in via env var, with a
+    # recursion sentinel). Evaluated on the RAW command first so the
+    # fail-closed wrapped-`sh -c` backstop sees quote tricks the chain
+    # splitter cannot, then per sub-command below. Local import: the
+    # policy module imports helpers from this one.
+    print_policies: list[Any] = []
+    if base_settings.get("print_policies"):
+        from . import print_policy as _pp  # noqa: PLC0415 (import cycle)
+
+        for entry in base_settings["print_policies"]:
+            if not isinstance(entry, dict) or not entry.get("program"):
+                continue
+            print_policies.append(
+                _pp.PrintPolicy(
+                    program=str(entry["program"]),
+                    opt_in_env=str(entry.get("opt_in_env", "")),
+                    recursion_env=str(entry.get("recursion_env", "")),
+                    fallback_hint=str(entry.get("fallback_hint", "")),
+                )
+            )
+        for pol in print_policies:
+            hit = _pp.guard_outcome(pol, command)
+            if hit is not None:
+                reason, decision = hit
+                return (decision, reason, command)
 
     current_cwd = cwd
 
@@ -648,35 +760,219 @@ def evaluate_chain(
             if identity_reason:
                 return ("deny", identity_reason, sub_command)
 
+        # Per-sub-command print-policy pass: catches an invocation that
+        # is not the first program in the compound command
+        # (``echo ok && <program> -p ...``), including with wrappers
+        # stripped. The raw-command pass above already handled the
+        # wrapped-`sh -c` backstop.
+        if print_policies:
+            from . import print_policy as _pp  # noqa: PLC0415 (import cycle)
+
+            for pol in print_policies:
+                for candidate in (sub_command, wrappers.strip_wrappers(sub_command)):
+                    hit = _pp.guard_outcome(pol, candidate)
+                    if hit is not None:
+                        reason, decision = hit
+                        return (decision, reason, sub_command)
+
         effective = resolve_config_for(target_dir, config)
         rules = effective.get("rules", []) or []
-        pattern_command = normalize_for_patterns(sub_command)
 
-        for rule in rules:
-            if not _rule_matches(rule, pattern_command):
+        # Evaluate the sub-command as written AND (when enabled and
+        # different) with pass-through wrappers stripped, so ``mise exec
+        # -- git push`` or ``sh -c "git stash"`` is judged by the same
+        # rules as the bare inner command. The most restrictive outcome
+        # across the forms wins: a wrapper must never weaken a decision,
+        # and an allow-rule match on the wrapped form cannot mask a deny
+        # on the real program inside it.
+        forms = [sub_command]
+        if base_settings.get("strip_wrappers", True):
+            stripped = wrappers.strip_wrappers(sub_command)
+            if stripped and stripped != sub_command:
+                forms.append(stripped)
+
+        outcome: tuple[str, str] | None = None
+        for form in forms:
+            hit = _first_rule_decision(
+                rules,
+                _pattern_view(form, mask_inert_literals),
+                exempt_cats,
+                target_dir,
+                category_scopes,
+            )
+            if hit is None:
                 continue
+            if outcome is None or _MORE_RESTRICTIVE[hit[0]] > _MORE_RESTRICTIVE[outcome[0]]:
+                outcome = hit
 
-            # Category-gated exemption for deploy worktrees: when the
-            # rule is tagged with a category that the operator opted
-            # into via settings.exempt_categories_for_deploy_worktree
-            # AND the effective target is inside a ``repos/<name>``
-            # deploy worktree, skip this rule and keep looking. Other
-            # rules (filesystem catastrophes, history rewrites) still
-            # fire because they live in different categories.
-            if (
-                exempt_cats
-                and rule.get("category") in exempt_cats
-                and _is_deploy_worktree(target_dir)
-            ):
-                continue
+        # Additional inspection pass: pipeline stages beyond the first,
+        # and the inner command of any command/process substitution, are
+        # each evaluated against the same rules. A guarded command can
+        # hide behind a benign leading token either way (``echo ok |
+        # git push --force`` or ``echo $(git push --force)``); the
+        # top-level chain split above never sees ``git push --force``
+        # directly because the outer token is ``echo``. This is
+        # ADDITIVE ONLY: a derived segment's ``allow`` is discarded (it
+        # must never mask a deny/ask already found on the sub-command
+        # as written), and only a derived deny/ask can raise the
+        # outcome, never lower it.
+        if base_settings.get("inspect_segments", True):
+            for derived in segments.derive_inspection_segments(sub_command):
+                hit = _first_rule_decision(
+                    rules,
+                    _pattern_view(derived, mask_inert_literals),
+                    exempt_cats,
+                    target_dir,
+                    category_scopes,
+                )
+                if hit is None or hit[0] == "allow":
+                    continue
+                if outcome is None or _MORE_RESTRICTIVE[hit[0]] > _MORE_RESTRICTIVE[outcome[0]]:
+                    outcome = hit
 
-            decision = rule.get("decision", "deny")
+        if outcome is not None:
+            decision, reason = outcome
             if decision == "allow":
                 return ("allow", "", "")
-            reason = rule.get("reason", "Blocked by guard")
             return (decision, reason, sub_command)
 
+    # Chain-level policy runs LAST, after every segment was individually
+    # allowed, so a specific rule's better replacement always wins over
+    # this generic advice.
+    chain_hit = _chain_policy_decision(command, base_settings.get("chain_policy") or {})
+    if chain_hit is not None:
+        return chain_hit
+
     return ("allow", "", "")
+
+
+def _chain_policy_decision(command: str, policy: dict[str, Any]) -> tuple[str, str, str] | None:
+    """Deny two compound-command shapes that defeat leading-token
+    permission allow-lists, each with a ``Run instead:`` split the caller
+    can re-run immediately.
+
+    * ``standalone_leading_tokens``: a chain where any segment's leading
+      token is a standalone-only command. Permission allow-lists match a
+      command's leading token, so chaining or piping such a command
+      always falls outside its allow-list entry and lands on the
+      operator as an approval prompt.
+    * ``deny_cd_prefix``: a chain whose first segment is ``cd``. The
+      shell cwd persists between tool calls and most tools take a path
+      argument, so the prefix is never needed and only defeats the
+      allow-list.
+
+    Leading-token matching only: a token inside a quoted argument never
+    fires this. Disabled by default (``enabled: false``).
+    """
+    if not policy or not policy.get("enabled"):
+        return None
+    segs = [seg for seg in split_chained_commands(command) if seg]
+    if len(segs) < 2:
+        return None
+
+    tokens = policy.get("standalone_leading_tokens")
+    standalone_tokens = {str(t) for t in tokens} if isinstance(tokens, list) else set()
+    if standalone_tokens:
+        hits = [seg for seg in segs if seg.split(None, 1)[0] in standalone_tokens]
+        if hits:
+            return (
+                "deny",
+                "Chained invocation of a standalone-only command. Run it as "
+                "its own call: chains and pipes fall outside leading-token "
+                "permission allow-lists and land on the operator as an "
+                "approval prompt.\nRun instead: " + "\n".join(hits),
+                command,
+            )
+
+    if policy.get("deny_cd_prefix") and re.match(r"^cd(\s|$)", segs[0]):
+        rest = [seg for seg in segs[1:] if not re.match(r"^cd(\s|$)", seg)]
+        suggestion = ("\nRun instead: " + "\n".join(rest)) if rest else ""
+        return (
+            "deny",
+            "cd-prefixed command chain. Use absolute paths or the tool's "
+            "path argument; the shell cwd persists between calls if you "
+            "must change directory." + suggestion,
+            command,
+        )
+
+    return None
+
+
+_MORE_RESTRICTIVE = {"allow": 0, "ask": 1, "deny": 2}
+
+
+def _rule_in_scope(
+    rule: dict[str, Any],
+    target_dir: Path | None,
+    category_scopes: dict[str, Any],
+) -> bool:
+    """Scope gating: a rule (or its whole category) can be limited to
+    named directory trees via ``settings.category_scopes``.
+
+    ``category_scopes`` maps a scope name to a list of directory
+    prefixes. A rule opts in with ``scope: <name>`` (rule-level wins) or
+    inherits a scope whose name equals its ``category``. A scoped rule
+    fires only when the effective target dir is inside one of the
+    scope's directories. Fail-closed direction: an UNKNOWN scope name or
+    an unresolvable target dir keeps the rule ACTIVE, so a typo in
+    settings can only over-enforce, never silently disable a rule.
+    """
+    scope_name = rule.get("scope") or rule.get("category")
+    if not scope_name or scope_name not in category_scopes:
+        return True
+    dirs = category_scopes.get(scope_name) or []
+    if not dirs:
+        return True
+    if target_dir is None:
+        return True
+    try:
+        resolved = target_dir.expanduser().resolve()
+    except OSError:
+        return True
+    for entry in dirs:
+        try:
+            prefix = Path(str(entry)).expanduser().resolve()
+        except OSError:
+            continue
+        if resolved == prefix or prefix in resolved.parents:
+            return True
+    return False
+
+
+def _first_rule_decision(
+    rules: list[dict[str, Any]],
+    pattern_command: str,
+    exempt_cats: set[str],
+    target_dir: Path | None,
+    category_scopes: dict[str, Any] | None = None,
+) -> tuple[str, str] | None:
+    """First-match-wins rule walk for one command form.
+
+    Returns ``(decision, reason)`` for the first matching rule, or None
+    when nothing matches. Category-gated deploy-worktree exemption: a
+    matching rule whose category the operator exempted is skipped when
+    the effective target is inside a ``repos/<name>`` deploy worktree,
+    so other categories (filesystem catastrophes, history rewrites)
+    still fire there. A rule carrying ``replacement:`` has the suggested
+    command appended to its reason, so a denial teaches the sanctioned
+    alternative instead of dead-ending.
+    """
+    for rule in rules:
+        if not _rule_matches(rule, pattern_command):
+            continue
+        if exempt_cats and rule.get("category") in exempt_cats and _is_deploy_worktree(target_dir):
+            continue
+        if category_scopes and not _rule_in_scope(rule, target_dir, category_scopes):
+            continue
+        decision = rule.get("decision", "deny")
+        if decision == "allow":
+            return ("allow", "")
+        reason = rule.get("reason", "Blocked by guard")
+        replacement = rule.get("replacement")
+        if replacement:
+            reason = f"{reason}\nRun instead: {replacement}"
+        return (decision, reason)
+    return None
 
 
 def evaluate_rules(command: str, config: dict[str, Any]) -> tuple[str, str]:

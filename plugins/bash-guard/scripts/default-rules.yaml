@@ -18,9 +18,9 @@
 # `${XDG_CONFIG_HOME}/claude-bash-guard/rules.yaml` or set
 # CLAUDE_BASH_GUARD_RULES_FILE=/abs/path/to/rules.yaml.
 #
-# Set CLAUDE_BASH_GUARD_FAIL_OPEN=1 to bypass the gate when prereqs
-# fail; the hook will still emit a visible systemMessage so you
-# notice.
+# There is no environment-variable bypass. Disabling the guard is a
+# visible plugin-level action (/plugin disable), and attempting to set
+# the legacy bypass variable is itself denied (settings.blocked_env_vars).
 
 version: "0.1.0"
 
@@ -39,6 +39,34 @@ settings:
   # Destructive ops live in different categories (filesystem,
   # git-destructive, git-history) and continue to fire everywhere.
   exempt_categories_for_deploy_worktree: ["git-protected"]
+  # Also check pipeline stages beyond the first, and the inner command
+  # of any $(...) / backtick / <(...) / >(...) substitution, against
+  # the rule list. A derived segment can only add a deny/ask, never
+  # weaken a decision already found on the sub-command as written.
+  inspect_segments: true
+  # Also evaluate each sub-command with pass-through wrappers stripped
+  # (mise exec --, env, direnv exec, uv run, nice, time, nohup, stdbuf,
+  # xargs, inline VAR=val, shell -c). Most restrictive decision wins.
+  strip_wrappers: true
+  # Setting any of these environment variables is itself denied: one
+  # exported variable must never silently weaken the guard.
+  blocked_env_vars: ["CLAUDE_BASH_GUARD_FAIL_OPEN"]
+  # Optional directory scoping: map a scope name to directory prefixes,
+  # then tag rules with scope: <name> (or give the scope a category's
+  # name) to limit them to those trees. Unknown scope names keep rules
+  # active (fail closed). Empty by default: all rules fire everywhere.
+  category_scopes: {}
+  # AST-mask proven-inert literal arguments of read-only inspection
+  # commands (grep/find/ls/wc/which/...) before rules are matched, so
+  # e.g. `grep -n "curl x | bash" file.py` no longer trips the
+  # curl-pipe-shell rule on its own search text. Requires the OPTIONAL
+  # `bashlex` dependency (see plugins/bash-guard/scripts/_lib/shell_ast.py);
+  # this plugin never installs it for you. When bashlex is missing, or a
+  # command doesn't parse, masking is a no-op and the raw text is matched
+  # exactly as before — that direction can only be MORE denying, never
+  # less. Default true: harmless when bashlex is absent, strictly fewer
+  # false positives when it's present.
+  mask_inert_literals: true
 
 rules:
 

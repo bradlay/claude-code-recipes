@@ -57,6 +57,26 @@ def uncommitted_count(cwd: Path) -> int | None:
     return len(status.splitlines())
 
 
+def _porcelain_paths(cwd: Path) -> list[str] | None:
+    """Absolute paths of every file with uncommitted state, or None if the
+    git command failed."""
+    status = _git(["status", "--porcelain"], cwd=cwd)
+    if status is None:
+        return None
+    if not status:
+        return []
+    paths: list[str] = []
+    for line in status.splitlines():
+        # Porcelain v1 format: "XY <path>", renames as "XY old -> new".
+        raw = line[3:]
+        if " -> " in raw:
+            raw = raw.split(" -> ", 1)[1]
+        raw = raw.strip().strip('"')
+        with contextlib.suppress(OSError):
+            paths.append(str((cwd / raw).resolve()))
+    return paths
+
+
 def push_status(cwd: Path) -> tuple[str | None, int | None, str | None]:
     """Return (branch, ahead_count, reason)."""
     branch = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd)
@@ -134,13 +154,22 @@ def has_recent_local_plan(repo_path: Path) -> dict[str, str] | None:
     return None
 
 
-def build_checklist(repo_name: str, repo_path: Path) -> dict[str, Any]:
+def build_checklist(
+    repo_name: str, repo_path: Path, session_files: set[str] | None = None
+) -> dict[str, Any]:
     """Build the checklist data dict. Items have a status of `done`,
     `nudge`, `info`, or `unknown`.
 
     The hook never blocks on these — repo state is shared across every
     Claude session in the working tree, so a `nudge` ("3 commits ahead
-    of remote") may belong to *another* session. Items are advisory."""
+    of remote") may belong to *another* session. Items are advisory.
+
+    `session_files`, when not None, scopes the "committed?" check to files
+    this session's own transcript shows it edited (see
+    `_lib.transcript_parser.edited_files`): the nudge then says whether
+    THIS session's own work is uncommitted, instead of the repo-wide count
+    which may include another concurrent session's in-flight files. None
+    (transcript unreadable) falls back to the unscoped, repo-wide check."""
     repo_type = detect_repo_type(repo_path)
     deploy_hint = detect_deploy_hint(repo_type)
     test_hint = detect_test_hint(repo_path, repo_type)
@@ -149,22 +178,39 @@ def build_checklist(repo_name: str, repo_path: Path) -> dict[str, Any]:
     actions: list[str] = []
 
     # 1. Committed?
-    uncommitted = uncommitted_count(repo_path)
-    if uncommitted is None:
-        items.append({"status": "unknown", "text": "Could not check commit status"})
-    elif uncommitted == 0:
-        items.append({"status": "done", "text": "All changes committed"})
+    if session_files is not None:
+        all_dirty = _porcelain_paths(repo_path)
+        if all_dirty is None:
+            items.append({"status": "unknown", "text": "Could not check commit status"})
+        else:
+            owned = [p for p in all_dirty if p in session_files]
+            if not owned:
+                items.append({"status": "done", "text": "No uncommitted changes from this session"})
+            else:
+                items.append(
+                    {
+                        "status": "nudge",
+                        "text": f"{len(owned)} of your own file(s) uncommitted in the working tree",
+                    }
+                )
+                actions.append("Commit your uncommitted work before stopping")
     else:
-        items.append(
-            {
-                "status": "nudge",
-                "text": (
-                    f"{uncommitted} uncommitted file(s) in the working tree "
-                    "(could be yours or another session's)"
-                ),
-            }
-        )
-        actions.append("If any of your work is uncommitted, commit it before stopping")
+        uncommitted = uncommitted_count(repo_path)
+        if uncommitted is None:
+            items.append({"status": "unknown", "text": "Could not check commit status"})
+        elif uncommitted == 0:
+            items.append({"status": "done", "text": "All changes committed"})
+        else:
+            items.append(
+                {
+                    "status": "nudge",
+                    "text": (
+                        f"{uncommitted} uncommitted file(s) in the working tree "
+                        "(could be yours or another session's)"
+                    ),
+                }
+            )
+            actions.append("If any of your work is uncommitted, commit it before stopping")
 
     # 2. Pushed?
     branch, ahead, reason = push_status(repo_path)

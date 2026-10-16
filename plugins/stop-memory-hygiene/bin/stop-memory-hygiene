@@ -1,0 +1,12 @@
+#!/bin/sh
+# Stop memory-hygiene launcher. Always fail-open: if python3 is missing the
+# stop proceeds with no notice.
+
+set -eu
+
+if ! command -v python3 >/dev/null 2>&1; then
+    exit 0
+fi
+
+dir="$(dirname "$0")"
+exec python3 "$dir/../scripts/stop_memory_hygiene_hook.py" "$@"
