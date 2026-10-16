@@ -107,9 +107,7 @@ class TestBoundedMalformedInput:
 
 class TestMissingInventoryDegradesSilently:
     def test_none_inventory_and_no_config_file_emits_nothing(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-        import _lib.inventory as inventory_mod
-
-        monkeypatch.setattr(inventory_mod, "load_inventory", lambda: None)
+        monkeypatch.setattr("_lib.inventory.load_inventory", lambda: None)
         payload = _payload("mycli statu", "Error: No such command 'statu'.")
         assert evaluate(payload) is None
 
