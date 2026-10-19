@@ -20,6 +20,9 @@ adapter references:
   optional hook pattern for enforcing role boundaries.
 - [references/codex.md](references/codex.md): a Codex native task tree, with a
   table mapping fleet operations to collaboration tools.
+- [references/operator-surface.md](references/operator-surface.md): operator
+  invariant 6, the decision option format, the operator goal, explicit model
+  ids, and role-scoped launch flags.
 
 If the chosen runtime cannot keep the four roles separate, report that as
 unsupported. Never merge roles silently to make the fleet fit.
@@ -44,7 +47,9 @@ chose for each session so the sweep can check it.
 
 ## Operator invariants
 
-These five hold at all times. A breach is a defect fixed on sight.
+These six hold at all times. A breach is a defect fixed on sight. Invariant 6
+and the option format for invariant 3 are in
+[references/operator-surface.md](references/operator-surface.md).
 
 1. Nothing is sent into the operator's session automatically, except the single
    operator-decision relay in invariant 3. Apart from that relay, only the human
@@ -97,7 +102,7 @@ Run after stand-up, after every spawn, and after every succession:
 3. Tab names: every tab carries a descriptive label, and no tab keeps a numeric
    placeholder.
 4. Models: each role on the model recorded for it.
-5. Invariants: the five operator invariants hold.
+5. Invariants: the six operator invariants hold.
 6. If role markers are in use, each marker names the live session for its role.
 
 Fix any miss in the same pass. A role on the wrong model that cannot switch in
