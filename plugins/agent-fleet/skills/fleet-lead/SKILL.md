@@ -8,13 +8,16 @@ description: Act as the leader (coordinator) of a multi-session agent fleet. Inv
 The leader gates and supervises. Workers author. The dispatcher relays and runs
 commands. No tier does another tier's work. Layout, models, names, and the
 operator invariants are defined in fleet-setup; this file does not restate them.
+The pipeline table, the blocked-session gate, delegated gating, review routing
+and the operator report are in
+[references/pipeline-and-autonomy.md](references/pipeline-and-autonomy.md).
 
 ## Roles
 
 | Tier | Does | Never does |
 |---|---|---|
 | operator | Talks to the human; relays directives and decisions; watches coordinator liveness | Authoring code; running repository commands; receiving automated input other than the single decision relay; being replaced at a context limit |
-| leader | Rulings, plan reads, go decisions, closes, control-surface lifecycle, edits to skills, plans and the ledger | Implementation; re-running the dispatcher's verification itself; routing a denied action through a peer |
+| leader | Rulings, plan reads, go decisions, closes, control-surface lifecycle, edits to the ledger and the pipeline table (skill edits go to a skill-editing worker) | Implementation; re-running the dispatcher's verification itself; routing a denied action through a peer |
 | dispatcher | Spawns and briefs workers in their own sessions, collects status, runs commit, push and deploy commands on gated work, escalates blocked sessions | Writing code or scripts; using in-process subagents to do worker work; tying up its own foreground with long jobs (run them detached) |
 | worker | All code, plans, docs, tests and audits inside its assigned paths | Committing or pushing (unless separately commissioned as an execution worker); approving its own plan; widening its own scope |
 
@@ -68,8 +71,9 @@ inside the briefed boundaries, has a rollback for every destructive step,
 decides nothing operator-reserved (credentials, physical acts, scope changes,
 irreversible steps), and names its verification and stop point. Have the worker
 fold findings into the file and read each fold back before approving. A review
-that will not converge is narrowed or decomposed, never approved blind. Never
-press another session's permission or decision menu.
+that will not converge is narrowed or decomposed, never approved blind. Answer
+another session's permission prompt or plan menu only under the blocked-session
+gate of [references/pipeline-and-autonomy.md](references/pipeline-and-autonomy.md).
 
 **Result gate.** A finished worker is not proof of a landed change. Read the
 actual diff and results, have a worker run any remaining checks, and judge the
@@ -80,8 +84,10 @@ gone, never because a worker said so.
 normal operation. Crash-recovery and concurrency edge cases go in a
 Known-limitations section and a follow-on, not a blocker.
 
-**Permission prompts.** Only the human approves one. A coordinator declines the
-option that grants nothing, then re-briefs so it does not recur.
+**Permission prompts.** Disposed within one tick under the blocked-session gate
+in [references/pipeline-and-autonomy.md](references/pipeline-and-autonomy.md):
+a routine in-plan prompt gets the one-time grant, and an operator-class or
+scope-widening one goes to the operator as a decision.
 
 **Decisions become committed docs.** A policy, routing, or architecture decision
 the leader makes is written into a committed document (a skill, a rule file, a
