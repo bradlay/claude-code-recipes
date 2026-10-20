@@ -1,6 +1,6 @@
 ---
 name: fleet-sweep
-description: Full stock-take, disposition, liveness check, and recovery pass for a multi-session agent fleet, run by the leader. Invoke on the periodic schedule, whenever the fleet looks idle, when workers finish, block, or appear stalled, when resuming after a handoff, or when asked for fleet status. Classifies every session, disposes of it, re-surfaces parked triggers and open decisions, and runs the C.1 to C.7 structure compliance check.
+description: Full stock-take, disposition, liveness check, and recovery pass for a multi-session agent fleet, run by the leader. Invoke on the periodic schedule, whenever the fleet looks idle, when workers finish, block, or appear stalled, when resuming after a handoff, or when asked for fleet status. Classifies every session, disposes of it, re-surfaces parked triggers and open decisions, and runs the C.1 to C.11 structure compliance check.
 ---
 
 # Fleet Sweep
@@ -95,7 +95,8 @@ counts as idle: give it the next buildable item.
 
 ## Step C: structure compliance check
 
-Emit one line per check, C.1 to C.7, each with one status:
+Emit one line per check, C.1 to C.11, each with one status. C.8 to C.11 are in
+[references/sweep-checks-addendum.md](references/sweep-checks-addendum.md).
 
 - PASS: evidence-backed success.
 - FIX: a repair was made and verified.
@@ -115,10 +116,11 @@ Never turn a capability gap into PASS.
 - **C.3 Models.** Each role is on its recorded model. An unavailable effective
   model is UNKNOWN, not PASS. FIX: switch in place where supported, otherwise
   replace the session.
-- **C.4 Operator invariants.** All five hold this cycle: no automated input to
+- **C.4 Operator invariants.** All six hold this cycle: no automated input to
   the operator except the decision relay; no code or repository commands from
   it; every operator decision surfaced there and only there; not replaced; the
-  open-decisions list re-surfaced. Also check that the dispatcher authored no
+  open-decisions list re-surfaced; the operator resolves by name and its marker
+  names the live session. Also check that the dispatcher authored no
   code and, if role markers are in use, that each marker names the live session.
 - **C.5 Consistency.** fleet-setup, fleet-lead and fleet-sweep (plus the adapter
   references) agree. When one changes, review all three together. The ledger and
@@ -137,7 +139,7 @@ Never turn a capability gap into PASS.
 
 ## Step 5: report and persist
 
-One line per session grouped by state, the C.1 to C.7 block, one line per parked
+One line per session grouped by state, the C.1 to C.11 block, one line per parked
 stream with its trigger state, one line per open operator decision, and what was
 closed, re-tasked, decided, or spawned. In recovery mode, append the sweep to the
 fleet ledger in the same tick. In status-only mode, report without writing. A
